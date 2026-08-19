@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 using NilaConnector.Core.Models;
@@ -132,7 +133,16 @@ internal static class TallyResponseParser
 
         try
         {
-            using var reader = XmlReader.Create(response, settings);
+            using var streamReader = new StreamReader(
+                response,
+                Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true,
+                bufferSize: 16 * 1024,
+                leaveOpen: true);
+            var rawXml = await streamReader.ReadToEndAsync(cancellationToken);
+            var sanitizedXml = RemoveInvalidXmlCharacters(rawXml);
+            using var textReader = new StringReader(sanitizedXml);
+            using var reader = XmlReader.Create(textReader, settings);
             return await XDocument.LoadAsync(reader, LoadOptions.None, cancellationToken);
         }
         catch (XmlException exception)
@@ -142,6 +152,16 @@ internal static class TallyResponseParser
                 "Tally returned malformed or unsafe XML.",
                 exception);
         }
+    }
+
+    private static string RemoveInvalidXmlCharacters(string value)
+    {
+        if (value.All(XmlConvert.IsXmlChar))
+        {
+            return value;
+        }
+
+        return string.Concat(value.Where(XmlConvert.IsXmlChar));
     }
 
     private static int RequiredCounter(XDocument document, string name)

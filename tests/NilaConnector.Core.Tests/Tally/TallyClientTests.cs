@@ -173,6 +173,25 @@ public sealed class TallyClientTests
     }
 
     [Fact]
+    public async Task ToleratesInvalidControlCharactersEmittedByTallyInMasterExports()
+    {
+        const string ledgerResponse = """
+            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
+              <LEDGER NAME="Cash Account"><GUID>ledger-guid</GUID></LEDGER>
+            </COLLECTION></DATA></BODY></ENVELOPE>
+            """;
+        const string emptyResponse = """
+            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION /></DATA></BODY></ENVELOPE>
+            """;
+        await using var server = new FakeTallyServer(ledgerResponse, emptyResponse, emptyResponse);
+        using var client = CreateClient(server.Endpoint);
+
+        var masters = await client.GetMastersAsync("Nila", CancellationToken.None);
+
+        Assert.Equal("Cash Account", Assert.Single(masters).Name);
+    }
+
+    [Fact]
     public async Task ReadsVouchersForAnExplicitCloudSelectedPeriod()
     {
         const string response = """
