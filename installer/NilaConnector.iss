@@ -27,6 +27,7 @@ OutputBaseFilename=NilaConnector-{#AppVersion}-win-x64-setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\src\NilaConnector.Desktop\Assets\nila.ico
 CloseApplications=yes
 RestartApplications=no
 UninstallDisplayIcon={app}\{#AppExeName}

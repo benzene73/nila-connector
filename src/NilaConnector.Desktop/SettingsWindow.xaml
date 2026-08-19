@@ -6,6 +6,7 @@
         Height="480"
         MinWidth="460"
         MinHeight="420"
+        Icon="Assets/nila.ico"
         ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner"
         Background="#F6F8FA">

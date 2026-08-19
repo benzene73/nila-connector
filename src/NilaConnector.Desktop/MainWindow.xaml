@@ -6,6 +6,7 @@
         Height="680"
         MinWidth="600"
         MinHeight="500"
+        Icon="Assets/nila.ico"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanResize"
         Background="#F6F8FA">
@@ -53,8 +54,12 @@
             </Grid.ColumnDefinitions>
 
             <Border Width="44" Height="44" Background="#004865" CornerRadius="10">
-                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Foreground="White" FontSize="22" FontWeight="SemiBold" Text="N" />
+                <Viewbox Width="30" Height="30" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Canvas Width="100" Height="100">
+                        <Path Fill="#F5F1E8"
+                              Data="M 50,10 A 40,40 0 0,1 50,90 A 58,58 0 0,0 50,10 Z" />
+                    </Canvas>
+                </Viewbox>
             </Border>
             <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
                 <TextBlock FontSize="24" FontWeight="SemiBold" Foreground="#101828" Text="Nila Connector" />

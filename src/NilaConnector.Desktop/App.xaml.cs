@@ -22,6 +22,7 @@ public partial class App : System.Windows.Application, IDisposable
 
     private IHost? _host;
     private Forms.NotifyIcon? _trayIcon;
+    private Icon? _applicationIcon;
     private MainWindow? _mainWindow;
     private Mutex? _singleInstanceMutex;
 
@@ -80,6 +81,7 @@ public partial class App : System.Windows.Application, IDisposable
     protected override void OnExit(ExitEventArgs e)
     {
         _trayIcon?.Dispose();
+        _applicationIcon?.Dispose();
 
         if (_host is not null)
         {
@@ -186,10 +188,14 @@ public partial class App : System.Windows.Application, IDisposable
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) => ExitApplication());
 
+        _applicationIcon ??= Environment.ProcessPath is { } processPath
+            ? Icon.ExtractAssociatedIcon(processPath)
+            : null;
+
         var icon = new Forms.NotifyIcon
         {
             ContextMenuStrip = menu,
-            Icon = SystemIcons.Application,
+            Icon = _applicationIcon ?? SystemIcons.Application,
             Text = "Nila Connector",
             Visible = true,
         };

@@ -20,9 +20,14 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\nila.ico</ApplicationIcon>
     <ApplicationTitle>Nila Connector</ApplicationTitle>
     <AssemblyName>NilaConnector</AssemblyName>
     <RootNamespace>NilaConnector.Desktop</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\nila.ico" />
+  </ItemGroup>
 
 </Project>
