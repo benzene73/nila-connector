@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using NilaConnector.Core.Models;
@@ -46,17 +47,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public bool HasCompanies => _state.Companies.Count > 0;
 
+    public bool HasNoCompanies => !HasCompanies;
+
+    public string CompanyCountLabel => _state.Companies.Count.ToString(CultureInfo.InvariantCulture);
+
     public string? TallyError => _state.TallyError;
 
     public string? NilaError => _state.NilaError;
 
-    public bool CanLink => !_linking;
+    public bool IsLinked => _credentialStore.Load() is not null;
 
-    public string LinkButtonText => _credentialStore.Load() is not null
-        ? "Unlink"
-        : _linking
-            ? "Linking…"
-            : "Link to Nila";
+    public bool ShowLinkButton => !IsLinked;
+
+    public bool CanLink => !_linking && !IsLinked;
+
+    public string LinkButtonText => _linking ? "Linking…" : "Link to Nila";
 
     public string? PairingMessage => _pairingMessage;
 
@@ -137,6 +142,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         _linking = false;
         _pairingMessage = "This computer is no longer linked to Nila.";
+        OnPropertyChanged(string.Empty);
+    }
+
+    public void FailUnlinking()
+    {
+        _linking = false;
+        _pairingMessage = "Nila could not unlink this computer. Try again.";
         OnPropertyChanged(string.Empty);
     }
 

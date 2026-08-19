@@ -2,15 +2,41 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Nila Connector"
-        Width="460"
-        Height="520"
-        MinWidth="420"
-        MinHeight="440"
+        Width="720"
+        Height="680"
+        MinWidth="600"
+        MinHeight="500"
         WindowStartupLocation="CenterScreen"
-        Background="#F7F7F8">
-    <Grid Margin="28">
+        ResizeMode="CanResize"
+        Background="#F6F8FA">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="MinWidth" Value="116" />
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="Padding" Value="18,8" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#137BA8" />
+            <Setter Property="BorderBrush" Value="#137BA8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style x:Key="QuietButton" TargetType="Button">
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="Foreground" Value="#344054" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#D0D5DD" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="26">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -18,75 +44,172 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock FontSize="24" FontWeight="SemiBold" Text="Nila Connector" />
+        <!-- Product header -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-        <StackPanel Grid.Row="1" Margin="0,22,0,0">
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                <Ellipse Width="10" Height="10" Fill="{Binding NilaColor}" Margin="0,0,10,0" />
-                <TextBlock FontSize="14">
-                    <Run Text="Nila " />
-                    <Run FontWeight="SemiBold" Text="{Binding NilaStatus, Mode=OneWay}" />
-                </TextBlock>
+            <Border Width="44" Height="44" Background="#004865" CornerRadius="10">
+                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="White" FontSize="22" FontWeight="SemiBold" Text="N" />
+            </Border>
+            <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                <TextBlock FontSize="24" FontWeight="SemiBold" Foreground="#101828" Text="Nila Connector" />
+                <TextBlock Margin="0,3,0,0" Foreground="#667085" Text="Tally bridge for this computer" />
             </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <Ellipse Width="10" Height="10" Fill="{Binding TallyColor}" Margin="0,0,10,0" />
-                <TextBlock FontSize="14">
-                    <Run Text="Tally " />
-                    <Run FontWeight="SemiBold" Text="{Binding TallyStatus, Mode=OneWay}" />
-                </TextBlock>
-            </StackPanel>
-        </StackPanel>
+            <Button Grid.Column="2" Style="{StaticResource QuietButton}"
+                    Content="Settings" Click="Settings_Click" />
+        </Grid>
 
-        <TextBlock Grid.Row="2" Margin="20,10,0,0" Foreground="#66666B"
-                   TextWrapping="Wrap" Text="{Binding PairingMessage}" />
+        <!-- Connection state -->
+        <Border Grid.Row="1" Margin="0,22,0,0" Padding="16,13" Background="White"
+                BorderBrush="#DCE1E7" BorderThickness="1" CornerRadius="8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Row="3" FontSize="17" FontWeight="SemiBold" Text="Companies" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="10" Height="10" Fill="{Binding NilaColor}" Margin="0,0,10,0" />
+                    <StackPanel>
+                        <TextBlock Foreground="#667085" FontSize="12" Text="NILA CLOUD" />
+                        <TextBlock Margin="0,2,0,0" FontWeight="SemiBold" Foreground="#101828"
+                                   Text="{Binding NilaStatus, Mode=OneWay}" />
+                    </StackPanel>
+                </StackPanel>
 
-        <Border Grid.Row="4" Margin="0,12,0,20" Padding="18" Background="White"
-                BorderBrush="#DEDEE2" BorderThickness="1" CornerRadius="6">
-            <DockPanel>
-                <TextBlock DockPanel.Dock="Top" Margin="0,0,0,12" Foreground="#66666B"
-                           Text="{Binding CompanySummary}" />
-                <ItemsControl ItemsSource="{Binding Companies}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border Padding="0,12" BorderBrush="#ECECEF" BorderThickness="0,1,0,0">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
-                                    <TextBlock Grid.Column="1" Foreground="#1F9D68" Text="{Binding Status}" />
-                                    <StackPanel Grid.Row="1" Margin="0,8,12,0">
-                                        <TextBlock Foreground="#66666B" Text="{Binding Masters, StringFormat=Masters: {0}}" />
-                                        <TextBlock Margin="0,3,0,0" Foreground="#66666B" Text="{Binding Vouchers, StringFormat=Vouchers: {0}}" />
-                                        <TextBlock Margin="0,4,0,0" Foreground="#C2413B" TextWrapping="Wrap" Text="{Binding Error}" />
-                                    </StackPanel>
-                                    <Button Grid.Row="1" Grid.Column="1" MinWidth="90" Height="30"
-                                            VerticalAlignment="Top"
-                                            Content="{Binding SyncButtonText}"
-                                            IsEnabled="{Binding CanSync}"
-                                            Click="SyncNow_Click" />
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </DockPanel>
+                <Border Grid.Column="1" Background="#EAECF0" />
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
+                    <Ellipse Width="10" Height="10" Fill="{Binding TallyColor}" Margin="0,0,10,0" />
+                    <StackPanel>
+                        <TextBlock Foreground="#667085" FontSize="12" Text="TALLYPRIME" />
+                        <TextBlock Margin="0,2,0,0" FontWeight="SemiBold" Foreground="#101828"
+                                   Text="{Binding TallyStatus, Mode=OneWay}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <Button Grid.Column="3" Margin="18,0,0,0" Style="{StaticResource PrimaryButton}"
+                        Content="Link to Nila"
+                        Visibility="{Binding ShowLinkButton, Converter={StaticResource BooleanToVisibilityConverter}}"
+                        IsEnabled="{Binding CanLink}"
+                        Click="LinkNila_Click" />
+            </Grid>
         </Border>
 
-        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button MinWidth="96" Height="32" Margin="0,0,8,0"
-                    Content="{Binding LinkButtonText}"
-                    IsEnabled="{Binding CanLink}"
-                    Click="LinkNila_Click" />
-            <Button MinWidth="92" Height="32" Content="Diagnostics" IsEnabled="False" />
-        </StackPanel>
+        <!-- Company section heading -->
+        <Grid Grid.Row="2" Margin="0,24,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock FontSize="18" FontWeight="SemiBold" Foreground="#101828" Text="Open companies" />
+                <TextBlock Margin="0,3,0,0" Foreground="#667085"
+                           Text="Only companies currently loaded in TallyPrime appear here." />
+            </StackPanel>
+            <Border Grid.Column="1" Padding="10,5" VerticalAlignment="Center"
+                    Background="#EEF8FC" CornerRadius="12">
+                <TextBlock Foreground="#006D99" FontWeight="SemiBold" Text="{Binding CompanyCountLabel}" />
+            </Border>
+        </Grid>
+
+        <!-- Company workspace -->
+        <Border Grid.Row="3" Background="White" BorderBrush="#DCE1E7"
+                BorderThickness="1" CornerRadius="8">
+            <Grid>
+                <ScrollViewer Padding="10" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
+                              Visibility="{Binding HasCompanies, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ItemsControl ItemsSource="{Binding Companies}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,10" Padding="17,15" Background="#FAFBFC"
+                                        BorderBrush="#E4E7EC" BorderThickness="1" CornerRadius="7">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border Width="34" Height="34" Margin="0,0,11,0"
+                                                    Background="#E3F5FF" CornerRadius="6">
+                                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           Foreground="#137BA8" FontSize="16" FontWeight="SemiBold" Text="T" />
+                                            </Border>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock FontSize="16" FontWeight="SemiBold" Foreground="#101828"
+                                                           TextTrimming="CharacterEllipsis" Text="{Binding Name}" />
+                                                <TextBlock Margin="0,2,0,0" Foreground="#087A51" FontSize="12"
+                                                           FontWeight="SemiBold" Text="{Binding Status}" />
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <Button Grid.Column="1" Grid.RowSpan="2" VerticalAlignment="Center"
+                                                Style="{StaticResource PrimaryButton}"
+                                                Content="{Binding SyncButtonText}"
+                                                IsEnabled="{Binding CanSync}"
+                                                Click="SyncNow_Click" />
+
+                                        <StackPanel Grid.Row="1" Margin="45,11,18,0">
+                                            <TextBlock Foreground="#667085" Text="{Binding Masters, StringFormat=Masters  ·  {0}}" />
+                                            <TextBlock Margin="0,4,0,0" Foreground="#667085"
+                                                       Text="{Binding Vouchers, StringFormat=Vouchers ·  {0}}" />
+                                        </StackPanel>
+
+                                        <Border Grid.Row="2" Grid.ColumnSpan="2" Margin="45,10,0,0" Padding="10,7"
+                                                Background="#FFF4F3" CornerRadius="5">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Error}" Value="{x:Null}">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Error}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Foreground="#B42318" TextWrapping="Wrap" Text="{Binding Error}" />
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Visibility="{Binding HasNoCompanies, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Border Width="48" Height="48" HorizontalAlignment="Center"
+                            Background="#EEF8FC" CornerRadius="24">
+                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="#137BA8" FontSize="22" Text="T" />
+                    </Border>
+                    <TextBlock Margin="0,14,0,0" HorizontalAlignment="Center" FontSize="16"
+                               FontWeight="SemiBold" Foreground="#101828" Text="No open Tally company" />
+                    <TextBlock Width="330" Margin="0,6,0,0" TextAlignment="Center" TextWrapping="Wrap"
+                               Foreground="#667085" Text="Open a company in the TallyPrime instance listening on port 9000." />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Non-blocking activity message -->
+        <TextBlock Grid.Row="4" Margin="2,13,0,0" Foreground="#667085"
+                   TextWrapping="Wrap" Text="{Binding PairingMessage}" />
     </Grid>
 </Window>

@@ -32,23 +32,40 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (_machineLinker.IsLinked)
-            {
-                _viewModel.BeginUnlinking();
-                await _machineLinker.UnlinkAsync(CancellationToken.None);
-                _viewModel.CompleteUnlinking();
-            }
-            else
-            {
-                _viewModel.BeginLinking();
-                _ = await _machineLinker.LinkAsync(Environment.MachineName, CancellationToken.None);
-                _viewModel.CompleteLinking();
-            }
+            _viewModel.BeginLinking();
+            _ = await _machineLinker.LinkAsync(Environment.MachineName, CancellationToken.None);
+            _viewModel.CompleteLinking();
         }
         catch (Exception exception)
         {
             LogLinkActionFailed(_logger, exception.GetType().Name);
             _viewModel.FailLinking();
+        }
+    }
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        var settingsWindow = new SettingsWindow(_viewModel.IsLinked, UnlinkFromSettingsAsync)
+        {
+            Owner = this,
+        };
+
+        _ = settingsWindow.ShowDialog();
+    }
+
+    private async Task UnlinkFromSettingsAsync()
+    {
+        try
+        {
+            _viewModel.BeginUnlinking();
+            await _machineLinker.UnlinkAsync(CancellationToken.None);
+            _viewModel.CompleteUnlinking();
+        }
+        catch (Exception exception)
+        {
+            LogLinkActionFailed(_logger, exception.GetType().Name);
+            _viewModel.FailUnlinking();
+            throw;
         }
     }
 
