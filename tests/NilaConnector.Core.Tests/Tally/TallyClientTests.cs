@@ -199,8 +199,11 @@ public sealed class TallyClientTests
               <VOUCHER REMOTEID="remote-1" VCHTYPE="Sales">
                 <DATE>20260819</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
                 <VOUCHERNUMBER>7</VOUCHERNUMBER><MASTERID>42</MASTERID><GUID>voucher-guid</GUID>
+                <PARTYLEDGERNAME>ABC Retail</PARTYLEDGERNAME><PARTYGSTIN>33AABCP9487A1ZG</PARTYGSTIN>
+                <PLACEOFSUPPLY>Tamil Nadu</PLACEOFSUPPLY>
                 <NARRATION>Read only</NARRATION>
-                <ALLLEDGERENTRIES.LIST><LEDGERNAME>Cash</LEDGERNAME><AMOUNT>100.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+                <ALLLEDGERENTRIES.LIST><LEDGERNAME>ABC Retail</LEDGERNAME><ISPARTYLEDGER>Yes</ISPARTYLEDGER><AMOUNT>118.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+                <ALLINVENTORYENTRIES.LIST><STOCKITEMNAME>Service</STOCKITEMNAME><HSNCODE>9987</HSNCODE><AMOUNT>-100.00</AMOUNT></ALLINVENTORYENTRIES.LIST>
               </VOUCHER>
             </COLLECTION></DATA></BODY></ENVELOPE>
             """;
@@ -218,8 +221,15 @@ public sealed class TallyClientTests
         Assert.Equal("guid:voucher-guid", voucher.Identity);
         Assert.Equal(42, voucher.MasterId);
         Assert.Equal(new DateOnly(2026, 8, 19), voucher.Date);
+        Assert.Equal("ABC Retail", voucher.Data["party_ledger_name"]);
+        Assert.Equal("33AABCP9487A1ZG", voucher.Data["party_gstin"]);
+        var ledger = Assert.IsType<object[]>(voucher.Data["ledger_entries"])[0];
+        Assert.Equal("Yes", Assert.IsType<Dictionary<string, object?>>(ledger)["is_party_ledger"]);
+        var line = Assert.IsType<object[]>(voucher.Data["line_items"])[0];
+        Assert.Equal("9987", Assert.IsType<Dictionary<string, object?>>(line)["hsn_sac"]);
         Assert.Contains("<SVFROMDATE>20260801</SVFROMDATE>", request, StringComparison.Ordinal);
         Assert.Contains("<SVTODATE>20260819</SVTODATE>", request, StringComparison.Ordinal);
+        Assert.Contains("<NATIVEMETHOD>PartyGSTIN</NATIVEMETHOD>", request, StringComparison.Ordinal);
     }
 
     [Fact]

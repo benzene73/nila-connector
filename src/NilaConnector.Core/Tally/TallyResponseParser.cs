@@ -336,6 +336,22 @@ internal static class TallyResponseParser
                 ["ledger_name"] = Normalize(DescendantValue(entry, "LEDGERNAME")),
                 ["amount"] = Normalize(DescendantValue(entry, "AMOUNT")),
                 ["is_deemed_positive"] = Normalize(DescendantValue(entry, "ISDEEMEDPOSITIVE")),
+                ["is_party_ledger"] = Normalize(DescendantValue(entry, "ISPARTYLEDGER")),
+            })
+            .ToArray();
+
+        var lineItems = element.Descendants()
+            .Where(child => child.Name.LocalName.Equals("ALLINVENTORYENTRIES.LIST", StringComparison.OrdinalIgnoreCase))
+            .Select(entry => (object)new Dictionary<string, object?>
+            {
+                ["stock_item_name"] = Normalize(DescendantValue(entry, "STOCKITEMNAME")),
+                ["description"] = Normalize(DescendantValue(entry, "DESCRIPTION")),
+                ["amount"] = Normalize(DescendantValue(entry, "AMOUNT")),
+                ["quantity"] = Normalize(DescendantValue(entry, "BILLEDQTY")),
+                ["actual_quantity"] = Normalize(DescendantValue(entry, "ACTUALQTY")),
+                ["rate"] = Normalize(DescendantValue(entry, "RATE")),
+                ["hsn_sac"] = Normalize(DescendantValue(entry, "HSNCODE")),
+                ["gst_rate"] = Normalize(DescendantValue(entry, "GSTRATE")),
             })
             .ToArray();
 
@@ -351,7 +367,15 @@ internal static class TallyResponseParser
             new Dictionary<string, object?>
             {
                 ["alter_id"] = Normalize(DescendantValue(element, "ALTERID")),
+                ["party_ledger_name"] = Normalize(DescendantValue(element, "PARTYLEDGERNAME")),
+                ["buyer_name"] = Normalize(DescendantValue(element, "BASICBUYERNAME")),
+                ["party_gstin"] = Normalize(DescendantValue(element, "PARTYGSTIN")),
+                ["place_of_supply"] = Normalize(DescendantValue(element, "PLACEOFSUPPLY")),
+                ["recipient_registration"] = Normalize(DescendantValue(element, "GSTREGISTRATIONTYPE")),
+                ["is_invoice"] = Normalize(DescendantValue(element, "ISINVOICE")),
+                ["persisted_view"] = Normalize(DescendantValue(element, "PERSISTEDVIEW")),
                 ["ledger_entries"] = entries,
+                ["line_items"] = lineItems,
             });
     }
 
