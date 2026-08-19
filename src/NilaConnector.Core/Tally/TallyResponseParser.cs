@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using NilaConnector.Core.Models;
@@ -156,6 +157,12 @@ internal static class TallyResponseParser
 
     private static string RemoveInvalidXmlCharacters(string value)
     {
+        value = Regex.Replace(
+            value,
+            @"&#(?:(?<hex>[xX][0-9A-Fa-f]+)|(?<dec>[0-9]+));",
+            match => InvalidNumericCharacterReference(match) ? string.Empty : match.Value,
+            RegexOptions.CultureInvariant);
+
         if (value.All(XmlConvert.IsXmlChar))
         {
             return value;
@@ -163,6 +170,23 @@ internal static class TallyResponseParser
 
         return string.Concat(value.Where(XmlConvert.IsXmlChar));
     }
+
+    private static bool InvalidNumericCharacterReference(Match match)
+    {
+        var hex = match.Groups["hex"].Value;
+        int codePoint;
+        var parsed = hex.Length > 0
+            ? int.TryParse(hex[1..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out codePoint)
+            : int.TryParse(match.Groups["dec"].Value, CultureInfo.InvariantCulture, out codePoint);
+
+        return !parsed || !IsValidXmlCodePoint(codePoint);
+    }
+
+    private static bool IsValidXmlCodePoint(int value) =>
+        value is 0x9 or 0xA or 0xD ||
+        value is >= 0x20 and <= 0xD7FF ||
+        value is >= 0xE000 and <= 0xFFFD ||
+        value is >= 0x10000 and <= 0x10FFFF;
 
     private static int RequiredCounter(XDocument document, string name)
     {

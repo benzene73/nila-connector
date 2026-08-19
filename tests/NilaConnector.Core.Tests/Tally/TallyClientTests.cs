@@ -177,7 +177,7 @@ public sealed class TallyClientTests
     {
         const string ledgerResponse = """
             <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
-              <LEDGER NAME="Cash Account"><GUID>ledger-guid</GUID></LEDGER>
+              <LEDGER NAME="Cash&#4; Account"><GUID>ledger-guid</GUID></LEDGER>
             </COLLECTION></DATA></BODY></ENVELOPE>
             """;
         const string emptyResponse = """
