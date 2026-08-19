@@ -7,6 +7,34 @@ namespace NilaConnector.Core.Tests.Tally;
 public sealed class TallyClientTests
 {
     [Fact]
+    public async Task UsesAnUpdatedEndpointWithoutRestartingTheClient()
+    {
+        const string firstResponse = """
+            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
+              <COMPANY NAME="First company"><GUID>first-guid</GUID></COMPANY>
+            </COLLECTION></DATA></BODY></ENVELOPE>
+            """;
+        const string secondResponse = """
+            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
+              <COMPANY NAME="Second company"><GUID>second-guid</GUID></COMPANY>
+            </COLLECTION></DATA></BODY></ENVELOPE>
+            """;
+        await using var firstServer = new FakeTallyServer(firstResponse);
+        await using var secondServer = new FakeTallyServer(secondResponse);
+        var options = new TallyClientOptions { Endpoint = firstServer.Endpoint };
+        using var client = new TallyClient(
+            new HttpClient { Timeout = Timeout.InfiniteTimeSpan },
+            options);
+
+        var firstCompanies = await client.GetOpenCompaniesAsync(CancellationToken.None);
+        options.UpdateEndpoint(secondServer.Endpoint);
+        var secondCompanies = await client.GetOpenCompaniesAsync(CancellationToken.None);
+
+        Assert.Equal("First company", Assert.Single(firstCompanies).Name);
+        Assert.Equal("Second company", Assert.Single(secondCompanies).Name);
+    }
+
+    [Fact]
     public async Task CreatesOnePaymentVoucherInTheExplicitCompanyAndParsesMasterId()
     {
         const string response = """

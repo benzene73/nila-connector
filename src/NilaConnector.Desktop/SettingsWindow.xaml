@@ -54,6 +54,8 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -64,16 +66,38 @@
                     <TextBlock FontWeight="SemiBold" Foreground="#101828" Text="TallyPrime endpoint" />
                     <TextBlock Margin="0,3,0,0" Foreground="#667085" Text="Local HTTP/XML connection" />
                 </StackPanel>
-                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontFamily="Consolas"
-                           Foreground="#344054" Text="127.0.0.1:9000" />
+                <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="14" />
+                        <ColumnDefinition Width="100" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Margin="0,0,0,5" Foreground="#475467" Text="Host" />
+                        <TextBox x:Name="TallyHostTextBox" MinHeight="34" Padding="8,5"
+                                 VerticalContentAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Margin="0,0,0,5" Foreground="#475467" Text="Port" />
+                        <TextBox x:Name="TallyPortTextBox" MinHeight="34" Padding="8,5"
+                                 VerticalContentAlignment="Center" />
+                    </StackPanel>
+                </Grid>
 
-                <Border Grid.Row="1" Grid.ColumnSpan="2" Height="1" Margin="0,14" Background="#EAECF0" />
+                <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Margin="0,12,0,0" Orientation="Horizontal">
+                    <Button x:Name="SaveTallyButton" MinWidth="72" Style="{StaticResource PrimaryButton}"
+                            Content="Save" Click="SaveTally_Click" />
+                    <TextBlock x:Name="TallySaveStatusText" Margin="12,0,0,0" VerticalAlignment="Center"
+                               Foreground="#667085" />
+                </StackPanel>
 
-                <StackPanel Grid.Row="2" Margin="0,14,0,0">
+                <Border Grid.Row="3" Grid.ColumnSpan="2" Height="1" Margin="0,14" Background="#EAECF0" />
+
+                <StackPanel Grid.Row="4" Margin="0,14,0,0">
                     <TextBlock FontWeight="SemiBold" Foreground="#101828" Text="Nila device" />
                     <TextBlock Margin="0,3,0,0" Foreground="#667085" Text="Secure credential stored for this Windows user" />
                 </StackPanel>
-                <TextBlock x:Name="DeviceStatusText" Grid.Row="2" Grid.Column="1" Margin="0,14,0,0"
+                <TextBlock x:Name="DeviceStatusText" Grid.Row="4" Grid.Column="1" Margin="0,14,0,0"
                            VerticalAlignment="Top" FontWeight="SemiBold" Foreground="#087A51" />
             </Grid>
         </Border>

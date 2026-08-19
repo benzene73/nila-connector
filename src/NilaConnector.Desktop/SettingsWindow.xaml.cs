@@ -1,22 +1,58 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Windows;
+using NilaConnector.Desktop.Services;
 
 namespace NilaConnector.Desktop;
 
 public partial class SettingsWindow : Window
 {
     private readonly Func<Task> _unlinkAsync;
+    private readonly TallyConnectionSettingsStore _tallySettings;
 
-    public SettingsWindow(bool isLinked, Func<Task> unlinkAsync)
+    public SettingsWindow(
+        bool isLinked,
+        TallyConnectionSettingsStore tallySettings,
+        Func<Task> unlinkAsync)
     {
         InitializeComponent();
+        _tallySettings = tallySettings;
         _unlinkAsync = unlinkAsync;
+        TallyHostTextBox.Text = tallySettings.Host;
+        TallyPortTextBox.Text = tallySettings.Port.ToString(CultureInfo.InvariantCulture);
         DeviceStatusText.Text = isLinked ? "Linked" : "Not linked";
         DeviceStatusText.Foreground = isLinked
             ? System.Windows.Media.Brushes.SeaGreen
             : System.Windows.Media.Brushes.DimGray;
         UnlinkButton.IsEnabled = isLinked;
+    }
+
+    private async void SaveTally_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            SaveTallyButton.IsEnabled = false;
+            TallySaveStatusText.Foreground = System.Windows.Media.Brushes.DimGray;
+            TallySaveStatusText.Text = "Saving…";
+            await _tallySettings.SaveAsync(TallyHostTextBox.Text, TallyPortTextBox.Text);
+            TallySaveStatusText.Foreground = System.Windows.Media.Brushes.SeaGreen;
+            TallySaveStatusText.Text = "Saved — reconnecting automatically";
+        }
+        catch (ArgumentException exception)
+        {
+            TallySaveStatusText.Foreground = System.Windows.Media.Brushes.Firebrick;
+            TallySaveStatusText.Text = exception.Message;
+        }
+        catch (Exception)
+        {
+            TallySaveStatusText.Foreground = System.Windows.Media.Brushes.Firebrick;
+            TallySaveStatusText.Text = "Could not save the Tally settings.";
+        }
+        finally
+        {
+            SaveTallyButton.IsEnabled = true;
+        }
     }
 
     private void OpenLogs_Click(object sender, RoutedEventArgs e)

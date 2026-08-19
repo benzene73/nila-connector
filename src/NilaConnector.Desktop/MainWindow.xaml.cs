@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using Microsoft.Extensions.Logging;
 using NilaConnector.Core.Nila;
+using NilaConnector.Desktop.Services;
 using NilaConnector.Desktop.ViewModels;
 
 namespace NilaConnector.Desktop;
@@ -11,15 +12,18 @@ public partial class MainWindow : Window
     private readonly MainWindowViewModel _viewModel;
     private readonly MachineLinker _machineLinker;
     private readonly ILogger<MainWindow> _logger;
+    private readonly TallyConnectionSettingsStore _tallySettings;
 
     public MainWindow(
         MainWindowViewModel viewModel,
         MachineLinker machineLinker,
+        TallyConnectionSettingsStore tallySettings,
         ILogger<MainWindow> logger)
     {
         InitializeComponent();
         _viewModel = viewModel;
         _machineLinker = machineLinker;
+        _tallySettings = tallySettings;
         _logger = logger;
         DataContext = viewModel;
     }
@@ -45,7 +49,10 @@ public partial class MainWindow : Window
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
-        var settingsWindow = new SettingsWindow(_viewModel.IsLinked, UnlinkFromSettingsAsync)
+        var settingsWindow = new SettingsWindow(
+            _viewModel.IsLinked,
+            _tallySettings,
+            UnlinkFromSettingsAsync)
         {
             Owner = this,
         };

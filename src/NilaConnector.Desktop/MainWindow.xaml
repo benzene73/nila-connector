@@ -203,7 +203,7 @@
                     <TextBlock Margin="0,14,0,0" HorizontalAlignment="Center" FontSize="16"
                                FontWeight="SemiBold" Foreground="#101828" Text="No open Tally company" />
                     <TextBlock Width="330" Margin="0,6,0,0" TextAlignment="Center" TextWrapping="Wrap"
-                               Foreground="#667085" Text="Open a company in the TallyPrime instance listening on port 9000." />
+                               Foreground="#667085" Text="Open a company in the configured TallyPrime instance." />
                 </StackPanel>
             </Grid>
         </Border>

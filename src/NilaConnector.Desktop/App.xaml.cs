@@ -120,13 +120,18 @@ public partial class App : System.Windows.Application, IDisposable
 
         var tallyOptions = new TallyClientOptions();
         builder.Services.AddSingleton(tallyOptions);
+        builder.Services.AddSingleton<TallyConnectionSettingsStore>();
         builder.Services.AddSingleton<ConnectorStateStore>();
-        builder.Services.AddSingleton<ITallyClient>(_ => new TallyClient(
-            new HttpClient
-            {
-                Timeout = Timeout.InfiniteTimeSpan,
-            },
-            tallyOptions));
+        builder.Services.AddSingleton<ITallyClient>(services =>
+        {
+            _ = services.GetRequiredService<TallyConnectionSettingsStore>();
+            return new TallyClient(
+                new HttpClient
+                {
+                    Timeout = Timeout.InfiniteTimeSpan,
+                },
+                tallyOptions);
+        });
         builder.Services.AddHostedService<TallyMonitor>();
 
         builder.Services.AddSingleton(new NilaConnectionOptions
