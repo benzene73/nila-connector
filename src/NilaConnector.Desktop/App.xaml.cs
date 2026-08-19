@@ -16,15 +16,32 @@ using Forms = System.Windows.Forms;
 
 namespace NilaConnector.Desktop;
 
-public partial class App : System.Windows.Application
+public partial class App : System.Windows.Application, IDisposable
 {
+    private const string SingleInstanceMutexName = @"Local\KaguyaHQ.NilaConnector";
+
     private IHost? _host;
     private Forms.NotifyIcon? _trayIcon;
     private MainWindow? _mainWindow;
+    private Mutex? _singleInstanceMutex;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var ownsMutex);
+        if (!ownsMutex)
+        {
+            System.Windows.MessageBox.Show(
+                "Nila Connector is already running. Open it from the notification area.",
+                "Nila Connector",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+            Shutdown();
+            return;
+        }
 
         try
         {
@@ -70,7 +87,22 @@ public partial class App : System.Windows.Application
             _host.Dispose();
         }
 
+        Dispose();
+
         base.OnExit(e);
+    }
+
+    public void Dispose()
+    {
+        if (_singleInstanceMutex is null)
+        {
+            return;
+        }
+
+        _singleInstanceMutex.ReleaseMutex();
+        _singleInstanceMutex.Dispose();
+        _singleInstanceMutex = null;
+        GC.SuppressFinalize(this);
     }
 
     private static IHost BuildHost()
@@ -97,7 +129,10 @@ public partial class App : System.Windows.Application
             tallyOptions));
         builder.Services.AddHostedService<TallyMonitor>();
 
-        builder.Services.AddSingleton(new NilaConnectionOptions());
+        builder.Services.AddSingleton(new NilaConnectionOptions
+        {
+            ConnectorVersion = AppVersion.Current,
+        });
         builder.Services.AddSingleton(BuildPairingOptions());
         builder.Services.AddSingleton<DpapiDeviceCredentialStore>();
         builder.Services.AddSingleton<IDeviceCredentialStore>(services =>
@@ -123,11 +158,12 @@ public partial class App : System.Windows.Application
         var baseUrl = Environment.GetEnvironmentVariable("NILA_BASE_URL");
         var baseUri = Uri.TryCreate(baseUrl, UriKind.Absolute, out var configuredBaseUri)
             ? configuredBaseUri
-            : new Uri("http://127.0.0.1:4000");
+            : new Uri("https://nila.tax");
 
         return new NilaPairingOptions
         {
             BaseUri = baseUri,
+            ConnectorVersion = AppVersion.Current,
         };
     }
 
@@ -172,4 +208,12 @@ public partial class App : System.Windows.Application
 
     [LoggerMessage(EventId = 1001, Level = LogLevel.Critical, Message = "Nila Connector failed to start")]
     private static partial void LogStartupFailed(ILogger logger, Exception exception);
+}
+
+internal static class AppVersion
+{
+    public static string Current { get; } =
+        typeof(App).Assembly.GetName().Version is { } version
+            ? $"{version.Major}.{version.Minor}.{version.Build}"
+            : "0.1.0";
 }

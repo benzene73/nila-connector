@@ -20,6 +20,9 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationTitle>Nila Connector</ApplicationTitle>
+    <AssemblyName>NilaConnector</AssemblyName>
+    <RootNamespace>NilaConnector.Desktop</RootNamespace>
   </PropertyGroup>
 
 </Project>
