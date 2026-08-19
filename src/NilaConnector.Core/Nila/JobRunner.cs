@@ -32,8 +32,7 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
                 : "InvalidJob";
             var message = Truncate(exception.Message, 300);
             var status = exception is TallyClientException tallyFailure &&
-                         (jobKind == "import_vouchers" ||
-                          tallyFailure.Kind is TallyErrorKind.Timeout or TallyErrorKind.Unreachable)
+                         tallyFailure.Kind is TallyErrorKind.Timeout or TallyErrorKind.Unreachable
                     ? "indeterminate"
                     : "failed";
             LogFailed(logger, jobId, kind, message);

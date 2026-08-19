@@ -36,7 +36,7 @@ public sealed class JobRunnerTests
     }
 
     [Fact]
-    public async Task TreatsAnyBatchImportApplicationFailureAsIndeterminate()
+    public async Task TreatsVoucherImportApplicationFailureAsFailed()
     {
         var runner = new JobRunner(
             new ThrowingTallyClient(TallyErrorKind.ApplicationError),
@@ -45,7 +45,7 @@ public sealed class JobRunnerTests
 
         var result = await runner.ExecuteAsync(document.RootElement, CancellationToken.None);
 
-        Assert.Equal("indeterminate", result.Status);
+        Assert.Equal("failed", result.Status);
         Assert.Equal("ApplicationError", result.Details["kind"]);
     }
 
