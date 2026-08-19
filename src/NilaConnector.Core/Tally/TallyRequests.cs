@@ -66,6 +66,14 @@ internal static class TallyRequests
                 "RemoteID",
                 "Narration",
                 "AlterID",
+                "PartyLedgerName",
+                "BasicBuyerName",
+                "PartyGSTIN",
+                "PlaceOfSupply",
+                "GSTRegistrationType",
+                "IsInvoice",
+                "PersistedView",
+                "AllInventoryEntries.*",
                 "AllLedgerEntries.*"));
 
         return ExportCollection(company, from, to, collection);
