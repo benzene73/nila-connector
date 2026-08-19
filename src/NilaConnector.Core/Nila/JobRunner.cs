@@ -13,20 +13,17 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
         CancellationToken cancellationToken)
     {
         var jobId = RequiredPositiveInt(envelope, "job_id");
+        string? jobKind = null;
 
         try
         {
-            var command = ParseCreateVoucher(envelope);
-            LogStarting(logger, jobId, command.Company);
-            var result = await tallyClient.CreateVoucherAsync(command, cancellationToken);
-            LogSucceeded(logger, jobId, result.MasterId);
-
-            return new ConnectorJobResult(jobId, "succeeded", new Dictionary<string, object?>
+            jobKind = RequiredString(envelope, "kind");
+            return jobKind switch
             {
-                ["created"] = result.Created,
-                ["errors"] = result.Errors,
-                ["master_id"] = result.MasterId,
-            });
+                "create_voucher" => await ExecuteCreateVoucherAsync(jobId, envelope, cancellationToken),
+                "import_vouchers" => await ExecuteVoucherImportAsync(jobId, envelope, cancellationToken),
+                _ => throw new InvalidDataException("The connector received an unsupported job kind."),
+            };
         }
         catch (Exception exception) when (exception is TallyClientException or InvalidDataException)
         {
@@ -34,10 +31,9 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
                 ? tallyException.Kind.ToString()
                 : "InvalidJob";
             var message = Truncate(exception.Message, 300);
-            var status = exception is TallyClientException
-                {
-                    Kind: TallyErrorKind.Timeout or TallyErrorKind.Unreachable,
-                }
+            var status = exception is TallyClientException tallyFailure &&
+                         (jobKind == "import_vouchers" ||
+                          tallyFailure.Kind is TallyErrorKind.Timeout or TallyErrorKind.Unreachable)
                     ? "indeterminate"
                     : "failed";
             LogFailed(logger, jobId, kind, message);
@@ -49,13 +45,48 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
         }
     }
 
+    private async Task<ConnectorJobResult> ExecuteCreateVoucherAsync(
+        int jobId,
+        JsonElement envelope,
+        CancellationToken cancellationToken)
+    {
+        var command = ParseCreateVoucher(envelope);
+        LogStarting(logger, jobId, command.Company);
+        var result = await tallyClient.CreateVoucherAsync(command, cancellationToken);
+        LogSucceeded(logger, jobId, result.MasterId);
+
+        return new ConnectorJobResult(jobId, "succeeded", new Dictionary<string, object?>
+        {
+            ["created"] = result.Created,
+            ["errors"] = result.Errors,
+            ["master_id"] = result.MasterId,
+        });
+    }
+
+    private async Task<ConnectorJobResult> ExecuteVoucherImportAsync(
+        int jobId,
+        JsonElement envelope,
+        CancellationToken cancellationToken)
+    {
+        var command = ParseVoucherImport(envelope);
+        LogStarting(logger, jobId, command.Company);
+        var result = await tallyClient.ImportVouchersAsync(command, cancellationToken);
+        LogBatchSucceeded(logger, jobId, command.ExpectedCount, result.LastVoucherId);
+
+        return new ConnectorJobResult(jobId, "succeeded", new Dictionary<string, object?>
+        {
+            ["created"] = result.Created,
+            ["altered"] = result.Altered,
+            ["combined"] = result.Combined,
+            ["ignored"] = result.Ignored,
+            ["errors"] = result.Errors,
+            ["exceptions"] = result.Exceptions,
+            ["last_voucher_id"] = result.LastVoucherId,
+        });
+    }
+
     private static CreateVoucherCommand ParseCreateVoucher(JsonElement envelope)
     {
-        if (RequiredString(envelope, "kind") != "create_voucher")
-        {
-            throw new InvalidDataException("The connector received an unsupported job kind.");
-        }
-
         var jobKeyValue = RequiredString(envelope, "job_key");
         if (!Guid.TryParse(jobKeyValue, out var jobKey))
         {
@@ -117,6 +148,20 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
             narration);
     }
 
+    private static ImportVouchersCommand ParseVoucherImport(JsonElement envelope)
+    {
+        if (!envelope.TryGetProperty("payload", out var payload) ||
+            payload.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException("The job payload is missing.");
+        }
+
+        var company = BoundedString(payload, "company", 120);
+        var xml = BoundedString(payload, "xml", 750_000, trim: false);
+        var expectedCount = RequiredPositiveInt(payload, "expected_count");
+        return new ImportVouchersCommand(company, xml, expectedCount);
+    }
+
     private static int RequiredPositiveInt(JsonElement element, string property)
     {
         if (element.TryGetProperty(property, out var value) &&
@@ -129,9 +174,14 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
         throw new InvalidDataException($"The job {property} is invalid.");
     }
 
-    private static string BoundedString(JsonElement element, string property, int maxLength)
+    private static string BoundedString(
+        JsonElement element,
+        string property,
+        int maxLength,
+        bool trim = true)
     {
-        var value = RequiredString(element, property).Trim();
+        var value = RequiredString(element, property);
+        value = trim ? value.Trim() : value;
         if (value.Length == 0 || value.Length > maxLength)
         {
             throw new InvalidDataException($"The job {property} is invalid.");
@@ -155,6 +205,13 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
 
     [LoggerMessage(EventId = 5001, Level = LogLevel.Information, Message = "Completed Tally job {JobId} with MasterID {MasterId}")]
     private static partial void LogSucceeded(ILogger logger, int jobId, long masterId);
+
+    [LoggerMessage(EventId = 5003, Level = LogLevel.Information, Message = "Completed Tally batch job {JobId} with {VoucherCount} vouchers and last MasterID {LastVoucherId}")]
+    private static partial void LogBatchSucceeded(
+        ILogger logger,
+        int jobId,
+        int voucherCount,
+        long lastVoucherId);
 
     [LoggerMessage(EventId = 5002, Level = LogLevel.Warning, Message = "Tally job {JobId} failed ({Kind}): {Reason}")]
     private static partial void LogFailed(ILogger logger, int jobId, string kind, string reason);

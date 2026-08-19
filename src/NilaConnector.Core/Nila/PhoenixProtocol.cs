@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using NilaConnector.Core.Models;
 
 namespace NilaConnector.Core.Nila;
 
@@ -14,10 +15,19 @@ public static class PhoenixProtocol
         return AuthPrefix + encoded;
     }
 
-    public static byte[] Join(string reference, string topic, string connectorVersion) =>
+    public static byte[] Join(
+        string reference,
+        string topic,
+        string connectorVersion,
+        IReadOnlyList<TallyCompany>? companies = null) =>
         Encode(reference, reference, topic, "phx_join", new Dictionary<string, object?>
         {
             ["connector_version"] = connectorVersion,
+            ["companies"] = (companies ?? []).Select(company => new Dictionary<string, object?>
+            {
+                ["name"] = company.Name,
+                ["tally_guid"] = company.TallyGuid,
+            }).ToArray(),
         });
 
     public static byte[] Heartbeat(string reference) =>

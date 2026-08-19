@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using NilaConnector.Core.Models;
 using NilaConnector.Core.Nila;
 
 namespace NilaConnector.Core.Tests.Nila;
@@ -20,7 +21,11 @@ public sealed class PhoenixProtocolTests
     [Fact]
     public void EncodesADeviceJoinInPhoenixV2WireFormat()
     {
-        var json = PhoenixProtocol.Join("1", "tally_device:42", "0.1.0");
+        var json = PhoenixProtocol.Join(
+            "1",
+            "tally_device:42",
+            "0.1.0",
+            [new TallyCompany("Nila", "company-guid")]);
         using var document = JsonDocument.Parse(json);
         var message = document.RootElement;
 
@@ -29,6 +34,9 @@ public sealed class PhoenixProtocolTests
         Assert.Equal("tally_device:42", message[2].GetString());
         Assert.Equal("phx_join", message[3].GetString());
         Assert.Equal("0.1.0", message[4].GetProperty("connector_version").GetString());
+        var company = Assert.Single(message[4].GetProperty("companies").EnumerateArray());
+        Assert.Equal("Nila", company.GetProperty("name").GetString());
+        Assert.Equal("company-guid", company.GetProperty("tally_guid").GetString());
     }
 
     [Fact]

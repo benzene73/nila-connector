@@ -14,7 +14,9 @@ The current connector includes:
 - browser-based machine linking with an expiring approval request and a
   per-device credential protected by Windows DPAPI for the current user; and
 - durable, acknowledged Payment voucher jobs with structured Tally diagnostics
-  and indeterminate handling for ambiguous network outcomes.
+  and indeterminate handling for ambiguous network outcomes; and
+- company-scoped, validated multi-voucher imports for approved Nila accounting
+  handoffs, with partial or ambiguous Tally outcomes blocked from blind retry.
 
 ## Projects
 
@@ -88,5 +90,5 @@ signing-tool path:
 
 Unsigned builds are suitable for development but will trigger Windows trust
 warnings and must not be presented as a trusted public release. Inno Setup is
-commercially licensed software for commercial use; KaguyaHQ must obtain the
-appropriate license before distributing this installer to customers.
+freeware; JRSoftware also offers an optional commercial license for companies
+that want to financially support its development.

@@ -67,6 +67,61 @@ public sealed class TallyClientTests
     }
 
     [Fact]
+    public async Task ImportsAValidatedCompanyScopedVoucherBatch()
+    {
+        const string response = """
+            <RESPONSE>
+              <CREATED>2</CREATED><ALTERED>0</ALTERED><COMBINED>0</COMBINED>
+              <IGNORED>0</IGNORED><ERRORS>0</ERRORS><EXCEPTIONS>0</EXCEPTIONS>
+              <LASTVCHID>44</LASTVCHID>
+            </RESPONSE>
+            """;
+        await using var server = new FakeTallyServer(response);
+        using var client = CreateClient(server.Endpoint);
+
+        var result = await client.ImportVouchersAsync(
+            new ImportVouchersCommand("Nila", VoucherBatchXml, 2),
+            CancellationToken.None);
+        var request = await server.RequestBody;
+
+        Assert.Equal(new TallyVoucherBatchResult(2, 0, 0, 0, 0, 0, 44), result);
+        Assert.Equal(VoucherBatchXml, request);
+    }
+
+    [Fact]
+    public async Task RejectsABatchForADifferentCompanyBeforeSendingIt()
+    {
+        const string response = """
+            <RESPONSE><CREATED>2</CREATED><ALTERED>0</ALTERED><COMBINED>0</COMBINED>
+            <IGNORED>0</IGNORED><ERRORS>0</ERRORS><EXCEPTIONS>0</EXCEPTIONS></RESPONSE>
+            """;
+        await using var server = new FakeTallyServer(response);
+        using var client = CreateClient(server.Endpoint);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => client.ImportVouchersAsync(
+            new ImportVouchersCommand("Another Company", VoucherBatchXml, 2),
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RejectsAPartiallyAccountedVoucherBatch()
+    {
+        const string response = """
+            <RESPONSE><CREATED>1</CREATED><ALTERED>0</ALTERED><COMBINED>0</COMBINED>
+            <IGNORED>0</IGNORED><ERRORS>1</ERRORS><EXCEPTIONS>0</EXCEPTIONS></RESPONSE>
+            """;
+        await using var server = new FakeTallyServer(response);
+        using var client = CreateClient(server.Endpoint);
+
+        var exception = await Assert.ThrowsAsync<TallyClientException>(() =>
+            client.ImportVouchersAsync(
+                new ImportVouchersCommand("Nila", VoucherBatchXml, 2),
+                CancellationToken.None));
+
+        Assert.Equal(TallyErrorKind.ApplicationError, exception.Kind);
+    }
+
+    [Fact]
     public async Task DiscoversOpenCompaniesThroughARealHttpRequest()
     {
         var response = await File.ReadAllTextAsync(Fixture("open-companies.xml"));
@@ -212,6 +267,17 @@ public sealed class TallyClientTests
         });
 
     private static string Fixture(string name) => Path.Combine(AppContext.BaseDirectory, "Fixtures", name);
+
+    private const string VoucherBatchXml = """
+        <ENVELOPE>
+          <HEADER><TALLYREQUEST>Import</TALLYREQUEST><TYPE>Data</TYPE><ID>Vouchers</ID></HEADER>
+          <BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>Nila</SVCURRENTCOMPANY></STATICVARIABLES></DESC>
+          <DATA>
+            <TALLYMESSAGE><VOUCHER REMOTEID="nila-1" /></TALLYMESSAGE>
+            <TALLYMESSAGE><VOUCHER REMOTEID="nila-2" /></TALLYMESSAGE>
+          </DATA></BODY>
+        </ENVELOPE>
+        """;
 
     private sealed class DelayedHandler(TimeSpan delay) : HttpMessageHandler
     {

@@ -9,4 +9,8 @@ public interface ITallyClient
     Task<TallyVoucherResult> CreateVoucherAsync(
         CreateVoucherCommand command,
         CancellationToken cancellationToken);
+
+    Task<TallyVoucherBatchResult> ImportVouchersAsync(
+        ImportVouchersCommand command,
+        CancellationToken cancellationToken);
 }

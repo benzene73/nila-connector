@@ -48,6 +48,36 @@ internal static class TallyResponseParser
             .ToArray();
     }
 
+    public static async Task<TallyVoucherBatchResult> ParseVoucherBatchImportAsync(
+        Stream response,
+        int maxCharacters,
+        int expectedCount,
+        CancellationToken cancellationToken)
+    {
+        var document = await LoadDocumentAsync(response, maxCharacters, cancellationToken);
+        ThrowLineError(document);
+        ValidateOptionalStatus(document);
+
+        var result = new TallyVoucherBatchResult(
+            RequiredCounter(document, "CREATED"),
+            RequiredCounter(document, "ALTERED"),
+            RequiredCounter(document, "COMBINED"),
+            RequiredCounter(document, "IGNORED"),
+            RequiredCounter(document, "ERRORS"),
+            RequiredCounter(document, "EXCEPTIONS"),
+            OptionalCounter(document, "LASTVCHID"));
+
+        var accounted = result.Created + result.Altered + result.Combined + result.Ignored;
+        if (result.Errors != 0 || result.Exceptions != 0 || accounted != expectedCount)
+        {
+            throw new TallyClientException(
+                TallyErrorKind.ApplicationError,
+                $"Tally did not account for the complete voucher batch (expected={expectedCount}, accounted={accounted}, errors={result.Errors}, exceptions={result.Exceptions}).");
+        }
+
+        return result;
+    }
+
     private static async Task<XDocument> LoadDocumentAsync(
         Stream response,
         int maxCharacters,
@@ -86,6 +116,29 @@ internal static class TallyResponseParser
             .ToArray();
 
         if (values.Length != 1 || !int.TryParse(values[0], out var value))
+        {
+            throw new TallyClientException(
+                TallyErrorKind.InvalidResponse,
+                $"Tally returned an invalid {name} import counter.");
+        }
+
+        return value;
+    }
+
+    private static int OptionalCounter(XDocument document, string name)
+    {
+        var values = document
+            .Descendants()
+            .Where(element => element.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase))
+            .Select(element => element.Value.Trim())
+            .ToArray();
+
+        if (values.Length == 0)
+        {
+            return 0;
+        }
+
+        if (values.Length != 1 || !int.TryParse(values[0], out var value) || value < 0)
         {
             throw new TallyClientException(
                 TallyErrorKind.InvalidResponse,

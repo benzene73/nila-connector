@@ -93,9 +93,10 @@ public sealed partial class NilaConnectionMonitor(
 
         var topic = $"tally_device:{credential.DeviceId}";
         const string joinReference = "1";
+        var reportedCompanies = stateStore.Current.Companies.ToArray();
         await SendAsync(
             socket,
-            PhoenixProtocol.Join(joinReference, topic, options.ConnectorVersion),
+            PhoenixProtocol.Join(joinReference, topic, options.ConnectorVersion, reportedCompanies),
             sendLock,
             stoppingToken);
 
@@ -121,6 +122,16 @@ public sealed partial class NilaConnectionMonitor(
         connected();
 
         using var session = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var companiesChanged = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler<ConnectorState> stateChanged = (_, state) =>
+        {
+            if (!state.Companies.SequenceEqual(reportedCompanies))
+            {
+                companiesChanged.TrySetResult();
+            }
+        };
+        stateStore.Changed += stateChanged;
         var heartbeatAcknowledgements = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
         {
             SingleReader = true,
@@ -138,9 +149,19 @@ public sealed partial class NilaConnectionMonitor(
             sendLock,
             heartbeatAcknowledgements.Reader,
             session.Token);
-        var completed = await Task.WhenAny(receive, heartbeat);
-        await session.CancelAsync();
-        await completed;
+        try
+        {
+            var completed = await Task.WhenAny(receive, heartbeat, companiesChanged.Task);
+            await session.CancelAsync();
+            if (completed != companiesChanged.Task)
+            {
+                await completed;
+            }
+        }
+        finally
+        {
+            stateStore.Changed -= stateChanged;
+        }
     }
 
     private async Task ReceiveLoopAsync(
@@ -151,28 +172,89 @@ public sealed partial class NilaConnectionMonitor(
         ChannelWriter<string> heartbeatAcknowledgements,
         CancellationToken cancellationToken)
     {
+        Task<PhoenixMessage>? receiveTask = null;
+        Task<ConnectorJobResult>? jobTask = null;
+        Task? resultAcknowledgementTimeout = null;
+        string? resultReference = null;
+        string? resultStatus = null;
+        var resultJobId = 0;
+
         try
         {
             while (socket.State == WebSocketState.Open)
             {
-                var message = await ReceiveAsync(socket, cancellationToken);
+                receiveTask ??= ReceiveAsync(socket, cancellationToken);
+                var pending = new List<Task> { receiveTask };
+                if (jobTask is not null)
+                {
+                    pending.Add(jobTask);
+                }
+
+                if (resultAcknowledgementTimeout is not null)
+                {
+                    pending.Add(resultAcknowledgementTimeout);
+                }
+
+                var completed = await Task.WhenAny(pending);
+
+                if (completed == jobTask)
+                {
+                    var result = await jobTask;
+                    resultJobId = result.JobId;
+                    resultReference = $"result-{result.JobId}";
+                    resultStatus = result.Status;
+                    await SendAsync(
+                        socket,
+                        PhoenixProtocol.JobResult(
+                            joinReference,
+                            resultReference,
+                            topic,
+                            result),
+                        sendLock,
+                        cancellationToken);
+                    resultAcknowledgementTimeout = Task.Delay(options.ConnectTimeout, cancellationToken);
+                    jobTask = null;
+                    continue;
+                }
+
+                if (completed == resultAcknowledgementTimeout)
+                {
+                    await resultAcknowledgementTimeout;
+                    throw new TimeoutException("Nila did not acknowledge the Tally job result.");
+                }
+
+                var message = await receiveTask;
+                receiveTask = null;
                 if (message.Topic == "phoenix" &&
                     message.Reference is { } reference &&
                     message.IsSuccessfulReplyTo(reference))
                 {
                     _ = heartbeatAcknowledgements.TryWrite(reference);
                 }
+                else if (resultReference is not null &&
+                         message.Topic == topic &&
+                         message.Reference == resultReference &&
+                         message.Event == "phx_reply")
+                {
+                    if (!message.IsSuccessfulReplyTo(resultReference))
+                    {
+                        throw new InvalidDataException("Nila rejected the Tally job result.");
+                    }
+
+                    LogResultAcknowledged(logger, resultJobId, resultStatus ?? "unknown");
+                    resultJobId = 0;
+                    resultReference = null;
+                    resultStatus = null;
+                    resultAcknowledgementTimeout = null;
+                }
                 else if (message.Topic == topic && message.Event == "job")
                 {
-                    var result = await jobRunner.ExecuteAsync(message.Payload, cancellationToken);
-                    await SendJobResultAsync(
-                        socket,
-                        topic,
-                        joinReference,
-                        result,
-                        sendLock,
-                        heartbeatAcknowledgements,
-                        cancellationToken);
+                    if (jobTask is not null || resultReference is not null)
+                    {
+                        throw new InvalidDataException("Nila delivered overlapping Tally jobs.");
+                    }
+
+                    jobTask = jobRunner.ExecuteAsync(message.Payload, cancellationToken);
                 }
             }
         }
@@ -182,61 +264,6 @@ public sealed partial class NilaConnectionMonitor(
         }
 
         throw new IOException("The Nila WebSocket closed.");
-    }
-
-    private async Task SendJobResultAsync(
-        ClientWebSocket socket,
-        string topic,
-        string joinReference,
-        ConnectorJobResult result,
-        SemaphoreSlim sendLock,
-        ChannelWriter<string> heartbeatAcknowledgements,
-        CancellationToken cancellationToken)
-    {
-        var reference = $"result-{result.JobId}";
-        await SendAsync(
-            socket,
-            PhoenixProtocol.JobResult(joinReference, reference, topic, result),
-            sendLock,
-            cancellationToken);
-
-        using var acknowledgementTimeout =
-            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        acknowledgementTimeout.CancelAfter(options.ConnectTimeout);
-
-        while (true)
-        {
-            PhoenixMessage reply;
-            try
-            {
-                reply = await ReceiveAsync(socket, acknowledgementTimeout.Token);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                throw new TimeoutException($"Nila did not acknowledge Tally job {result.JobId}.");
-            }
-
-            if (reply.Topic == topic && reply.Reference == reference && reply.Event == "phx_reply")
-            {
-                if (!reply.IsSuccessfulReplyTo(reference))
-                {
-                    throw new InvalidDataException($"Nila rejected the result for Tally job {result.JobId}.");
-                }
-
-                LogResultAcknowledged(logger, result.JobId, result.Status);
-                return;
-            }
-
-            if (reply.Topic == "phoenix" &&
-                reply.Reference is { } heartbeatReference &&
-                reply.IsSuccessfulReplyTo(heartbeatReference))
-            {
-                _ = heartbeatAcknowledgements.TryWrite(heartbeatReference);
-                continue;
-            }
-
-            throw new InvalidDataException("Nila sent an unexpected message while acknowledging a job result.");
-        }
     }
 
     private async Task HeartbeatLoopAsync(

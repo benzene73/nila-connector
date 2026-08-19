@@ -10,5 +10,5 @@ public sealed record NilaConnectionOptions
 
     public TimeSpan HeartbeatAcknowledgementTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
-    public int MaxMessageBytes { get; init; } = 256 * 1024;
+    public int MaxMessageBytes { get; init; } = 1024 * 1024;
 }

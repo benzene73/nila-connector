@@ -41,6 +41,22 @@ public sealed class TallyClient : ITallyClient, IDisposable
             TallyResponseParser.ParseVoucherImportAsync,
             cancellationToken);
 
+    public Task<TallyVoucherBatchResult> ImportVouchersAsync(
+        ImportVouchersCommand command,
+        CancellationToken cancellationToken)
+    {
+        TallyRequestValidator.ValidateVoucherImport(command);
+        return SendAsync(
+            command.Xml,
+            (response, maxCharacters, token) =>
+                TallyResponseParser.ParseVoucherBatchImportAsync(
+                    response,
+                    maxCharacters,
+                    command.ExpectedCount,
+                    token),
+            cancellationToken);
+    }
+
     public void Dispose()
     {
         if (_disposed)
