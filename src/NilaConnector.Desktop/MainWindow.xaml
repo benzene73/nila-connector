@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Nila Connector"
         Width="460"
-        Height="390"
+        Height="520"
         MinWidth="420"
-        MinHeight="340"
+        MinHeight="440"
         WindowStartupLocation="CenterScreen"
         Background="#F7F7F8">
     <Grid Margin="28">
@@ -50,14 +50,29 @@
                 <ItemsControl ItemsSource="{Binding Companies}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Padding="0,10" BorderBrush="#ECECEF" BorderThickness="0,1,0,0">
+                            <Border Padding="0,12" BorderBrush="#ECECEF" BorderThickness="0,1,0,0">
                                 <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
-                                    <TextBlock Grid.Column="1" Foreground="#1F9D68" Text="Open" />
+                                    <TextBlock Grid.Column="1" Foreground="#1F9D68" Text="{Binding Status}" />
+                                    <StackPanel Grid.Row="1" Margin="0,8,12,0">
+                                        <TextBlock Foreground="#66666B" Text="{Binding Masters, StringFormat=Masters: {0}}" />
+                                        <TextBlock Margin="0,3,0,0" Foreground="#66666B" Text="{Binding Vouchers, StringFormat=Vouchers: {0}}" />
+                                        <TextBlock Margin="0,4,0,0" Foreground="#C2413B" TextWrapping="Wrap" Text="{Binding Error}" />
+                                    </StackPanel>
+                                    <Button Grid.Row="1" Grid.Column="1" MinWidth="90" Height="30"
+                                            VerticalAlignment="Top"
+                                            Content="{Binding SyncButtonText}"
+                                            IsEnabled="{Binding CanSync}"
+                                            Click="SyncNow_Click" />
                                 </Grid>
                             </Border>
                         </DataTemplate>

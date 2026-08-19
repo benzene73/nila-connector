@@ -52,6 +52,23 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void SyncNow_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: CompanyItemViewModel company })
+        {
+            return;
+        }
+
+        try
+        {
+            await _viewModel.SyncAsync(company, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            LogSyncFailed(_logger, company.Name, exception.GetType().Name);
+        }
+    }
+
     protected override void OnClosing(CancelEventArgs e)
     {
         if (!AllowClose)
@@ -68,4 +85,10 @@ public partial class MainWindow : Window
         Level = LogLevel.Warning,
         Message = "Nila link action failed ({ExceptionType})")]
     private static partial void LogLinkActionFailed(ILogger logger, string exceptionType);
+
+    [LoggerMessage(
+        EventId = 4101,
+        Level = LogLevel.Warning,
+        Message = "Company sync failed for {Company} ({ExceptionType})")]
+    private static partial void LogSyncFailed(ILogger logger, string company, string exceptionType);
 }

@@ -141,6 +141,69 @@ public sealed class TallyClientTests
     }
 
     [Fact]
+    public async Task ReadsCompanyScopedMastersAndNormalizesTheirKinds()
+    {
+        const string ledgerResponse = """
+            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
+              <LEDGER NAME="Cash"><GUID>ledger-guid</GUID><ALTERID>12</ALTERID><PARENT>Cash-in-Hand</PARENT></LEDGER>
+            </COLLECTION></DATA></BODY></ENVELOPE>
+            """;
+        const string typeResponse = """
+            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
+              <VOUCHERTYPE NAME="Sales"><GUID>type-guid</GUID><ISACTIVE>Yes</ISACTIVE></VOUCHERTYPE>
+            </COLLECTION></DATA></BODY></ENVELOPE>
+            """;
+        const string itemResponse = """
+            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
+              <STOCKITEM NAME="Consulting"><GUID>item-guid</GUID><BASEUNITS>Nos</BASEUNITS></STOCKITEM>
+            </COLLECTION></DATA></BODY></ENVELOPE>
+            """;
+        await using var server = new FakeTallyServer(ledgerResponse, typeResponse, itemResponse);
+        using var client = CreateClient(server.Endpoint);
+
+        var masters = await client.GetMastersAsync("Nila & Co", CancellationToken.None);
+        var requests = await server.RequestBodies;
+
+        Assert.Equal(["ledger", "voucher_type", "stock_item"], masters.Select(master => master.Kind));
+        Assert.Equal("guid:ledger-guid", masters[0].Identity);
+        Assert.Equal("Cash-in-Hand", masters[0].Data["parent"]);
+        Assert.All(requests, request => Assert.Contains("<SVCURRENTCOMPANY>Nila &amp; Co</SVCURRENTCOMPANY>", request, StringComparison.Ordinal));
+        Assert.Contains("<TYPE>Ledger</TYPE>", requests[0], StringComparison.Ordinal);
+        Assert.Contains("<TYPE>VoucherType</TYPE>", requests[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ReadsVouchersForAnExplicitCloudSelectedPeriod()
+    {
+        const string response = """
+            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
+              <VOUCHER REMOTEID="remote-1" VCHTYPE="Sales">
+                <DATE>20260819</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
+                <VOUCHERNUMBER>7</VOUCHERNUMBER><MASTERID>42</MASTERID><GUID>voucher-guid</GUID>
+                <NARRATION>Read only</NARRATION>
+                <ALLLEDGERENTRIES.LIST><LEDGERNAME>Cash</LEDGERNAME><AMOUNT>100.00</AMOUNT></ALLLEDGERENTRIES.LIST>
+              </VOUCHER>
+            </COLLECTION></DATA></BODY></ENVELOPE>
+            """;
+        await using var server = new FakeTallyServer(response);
+        using var client = CreateClient(server.Endpoint);
+
+        var vouchers = await client.GetVouchersAsync(
+            "Nila",
+            new DateOnly(2026, 8, 1),
+            new DateOnly(2026, 8, 19),
+            CancellationToken.None);
+        var request = await server.RequestBody;
+
+        var voucher = Assert.Single(vouchers);
+        Assert.Equal("guid:voucher-guid", voucher.Identity);
+        Assert.Equal(42, voucher.MasterId);
+        Assert.Equal(new DateOnly(2026, 8, 19), voucher.Date);
+        Assert.Contains("<SVFROMDATE>20260801</SVFROMDATE>", request, StringComparison.Ordinal);
+        Assert.Contains("<SVTODATE>20260819</SVTODATE>", request, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RejectsXmlWithADocumentType()
     {
         const string response = """

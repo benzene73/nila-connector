@@ -144,8 +144,15 @@ public partial class App : System.Windows.Application, IDisposable
                 Timeout = Timeout.InfiniteTimeSpan,
             },
             services.GetRequiredService<NilaPairingOptions>()));
+        builder.Services.AddSingleton(services => new NilaSyncClient(
+            new HttpClient
+            {
+                Timeout = Timeout.InfiniteTimeSpan,
+            },
+            services.GetRequiredService<NilaPairingOptions>()));
         builder.Services.AddSingleton<MachineLinker>();
         builder.Services.AddSingleton<JobRunner>();
+        builder.Services.AddSingleton<SyncCoordinator>();
         builder.Services.AddHostedService<NilaConnectionMonitor>();
         builder.Services.AddSingleton<MainWindowViewModel>();
         builder.Services.AddSingleton<MainWindow>();

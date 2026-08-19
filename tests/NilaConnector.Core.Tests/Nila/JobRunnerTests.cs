@@ -96,5 +96,15 @@ public sealed class JobRunnerTests
             CancellationToken cancellationToken) =>
             Task.FromException<TallyVoucherBatchResult>(
                 new TallyClientException(kind, "Safe diagnostic message."));
+
+        public Task<IReadOnlyList<TallyMaster>> GetMastersAsync(string company, CancellationToken cancellationToken)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<IReadOnlyList<TallySyncedVoucher>> GetVouchersAsync(string company, DateOnly from, DateOnly to, CancellationToken cancellationToken)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

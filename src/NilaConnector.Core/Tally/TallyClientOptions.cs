@@ -8,5 +8,5 @@ public sealed record TallyClientOptions
 
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(5);
 
-    public int MaxResponseBytes { get; init; } = 2 * 1024 * 1024;
+    public int MaxResponseBytes { get; init; } = 16 * 1024 * 1024;
 }

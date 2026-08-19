@@ -33,6 +33,44 @@ internal static class TallyRequests
         </ENVELOPE>
         """;
 
+    public static string Ledgers(string company) => MasterCollection(
+        company,
+        "Nila Ledgers",
+        "Ledger",
+        "Name", "GUID", "AlterID", "Parent", "IsBillWiseOn");
+
+    public static string VoucherTypes(string company) => MasterCollection(
+        company,
+        "Nila Voucher Types",
+        "VoucherType",
+        "Name", "GUID", "AlterID", "Parent", "NumberingMethod", "IsActive");
+
+    public static string StockItems(string company) => MasterCollection(
+        company,
+        "Nila Stock Items",
+        "StockItem",
+        "Name", "GUID", "AlterID", "Parent", "BaseUnits");
+
+    public static string Vouchers(string company, DateOnly from, DateOnly to)
+    {
+        var collection = new XElement("COLLECTION",
+            new XAttribute("NAME", "Nila Vouchers"),
+            new XAttribute("ISINITIALIZE", "Yes"),
+            new XElement("TYPE", "Voucher"),
+            NativeMethods(
+                "Date",
+                "VoucherTypeName",
+                "VoucherNumber",
+                "MasterID",
+                "GUID",
+                "RemoteID",
+                "Narration",
+                "AlterID",
+                "AllLedgerEntries.*"));
+
+        return ExportCollection(company, from, to, collection);
+    }
+
     public static string CreateVoucher(CreateVoucherCommand command)
     {
         var deterministicId = $"nila-job-{command.JobKey}";
@@ -105,5 +143,56 @@ internal static class TallyRequests
         }
 
         return entry;
+    }
+
+    private static IEnumerable<XElement> NativeMethods(params string[] methods) =>
+        methods.Select(method => new XElement("NATIVEMETHOD", method));
+
+    private static string MasterCollection(
+        string company,
+        string collectionName,
+        string type,
+        params string[] methods) =>
+        ExportCollection(
+            company,
+            null,
+            null,
+            new XElement("COLLECTION",
+                new XAttribute("NAME", collectionName),
+                new XAttribute("ISINITIALIZE", "Yes"),
+                new XElement("TYPE", type),
+                NativeMethods(methods)));
+
+    private static string ExportCollection(
+        string company,
+        DateOnly? from,
+        DateOnly? to,
+        params XElement[] collections)
+    {
+        var variables = new XElement("STATICVARIABLES",
+            new XElement("SVEXPORTFORMAT", "$$SysName:XML"),
+            new XElement("SVCURRENTCOMPANY", company));
+
+        if (from is not null && to is not null)
+        {
+            variables.Add(
+                new XElement("SVFROMDATE", from.Value.ToString("yyyyMMdd", CultureInfo.InvariantCulture)),
+                new XElement("SVTODATE", to.Value.ToString("yyyyMMdd", CultureInfo.InvariantCulture)));
+        }
+
+        var document = new XDocument(
+            new XElement("ENVELOPE",
+                new XElement("HEADER",
+                    new XElement("VERSION", "1"),
+                    new XElement("TALLYREQUEST", "Export"),
+                    new XElement("TYPE", "Collection"),
+                    new XElement("ID", collections[0].Attribute("NAME")!.Value)),
+                new XElement("BODY",
+                    new XElement("DESC",
+                        variables,
+                        new XElement("TDL",
+                            new XElement("TDLMESSAGE", collections))))));
+
+        return document.ToString(SaveOptions.DisableFormatting);
     }
 }

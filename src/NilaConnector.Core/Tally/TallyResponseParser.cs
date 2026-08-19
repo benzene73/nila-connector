@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Xml;
 using System.Xml.Linq;
 using NilaConnector.Core.Models;
@@ -45,6 +46,42 @@ internal static class TallyResponseParser
             .Cast<TallyCompany>()
             .DistinctBy(company => (company.Name, company.TallyGuid), CompanyIdentityComparer.Instance)
             .OrderBy(company => company.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public static async Task<IReadOnlyList<TallyMaster>> ParseMastersAsync(
+        Stream response,
+        int maxCharacters,
+        CancellationToken cancellationToken)
+    {
+        var document = await LoadDocumentAsync(response, maxCharacters, cancellationToken);
+        ValidateApplicationStatus(document);
+
+        return document.Descendants()
+            .Where(element =>
+                MasterKind(element.Name.LocalName) is not null &&
+                element.Parent?.Name.LocalName.Equals("COLLECTION", StringComparison.OrdinalIgnoreCase) == true)
+            .Select(ParseMaster)
+            .Where(master => master is not null)
+            .Cast<TallyMaster>()
+            .DistinctBy(master => (master.Kind, master.Identity), StringTupleComparer.Instance)
+            .ToArray();
+    }
+
+    public static async Task<IReadOnlyList<TallySyncedVoucher>> ParseVouchersAsync(
+        Stream response,
+        int maxCharacters,
+        CancellationToken cancellationToken)
+    {
+        var document = await LoadDocumentAsync(response, maxCharacters, cancellationToken);
+        ValidateApplicationStatus(document);
+
+        return document.Descendants()
+            .Where(element => element.Name.LocalName.Equals("VOUCHER", StringComparison.OrdinalIgnoreCase))
+            .Select(ParseVoucher)
+            .Where(voucher => voucher is not null)
+            .Cast<TallySyncedVoucher>()
+            .DistinctBy(voucher => voucher.Identity, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
@@ -191,6 +228,97 @@ internal static class TallyResponseParser
         return new TallyCompany(name.Trim(), Normalize(tallyGuid));
     }
 
+    private static TallyMaster? ParseMaster(XElement element)
+    {
+        var kind = MasterKind(element.Name.LocalName);
+        var name = AttributeValue(element, "NAME") ?? DescendantValue(element, "NAME");
+        if (kind is null || string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        var guid = Normalize(DescendantValue(element, "GUID") ?? AttributeValue(element, "GUID"));
+        var identity = guid is null ? $"name:{name.Trim().ToLowerInvariant()}" : $"guid:{guid.ToLowerInvariant()}";
+        var data = new Dictionary<string, object?>
+        {
+            ["parent"] = Normalize(DescendantValue(element, "PARENT")),
+            ["bill_wise"] = Normalize(DescendantValue(element, "ISBILLWISEON")),
+            ["numbering_method"] = Normalize(DescendantValue(element, "NUMBERINGMETHOD")),
+            ["is_active"] = Normalize(DescendantValue(element, "ISACTIVE")),
+            ["base_units"] = Normalize(DescendantValue(element, "BASEUNITS")),
+        };
+
+        return new TallyMaster(
+            kind,
+            identity,
+            name.Trim(),
+            guid,
+            Normalize(DescendantValue(element, "ALTERID")),
+            data);
+    }
+
+    private static TallySyncedVoucher? ParseVoucher(XElement element)
+    {
+        var dateText = DescendantValue(element, "DATE")?.Trim();
+        var voucherType = DescendantValue(element, "VOUCHERTYPENAME")?.Trim()
+            ?? AttributeValue(element, "VCHTYPE")?.Trim();
+
+        if (!DateOnly.TryParseExact(
+                dateText,
+                "yyyyMMdd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var date) || string.IsNullOrWhiteSpace(voucherType))
+        {
+            return null;
+        }
+
+        var guid = Normalize(DescendantValue(element, "GUID"));
+        var masterId = long.TryParse(DescendantValue(element, "MASTERID")?.Trim(), out var parsedMasterId)
+            ? parsedMasterId
+            : (long?)null;
+        var remoteId = Normalize(AttributeValue(element, "REMOTEID") ?? DescendantValue(element, "REMOTEID"));
+        var voucherNumber = Normalize(DescendantValue(element, "VOUCHERNUMBER"));
+        var identity = guid is not null
+            ? $"guid:{guid.ToLowerInvariant()}"
+            : masterId is not null
+                ? $"master:{masterId}"
+                : $"voucher:{date:yyyyMMdd}:{voucherType.ToLowerInvariant()}:{voucherNumber?.ToLowerInvariant()}";
+
+        var entries = element.Descendants()
+            .Where(child => child.Name.LocalName.Equals("ALLLEDGERENTRIES.LIST", StringComparison.OrdinalIgnoreCase))
+            .Select(entry => (object)new Dictionary<string, object?>
+            {
+                ["ledger_name"] = Normalize(DescendantValue(entry, "LEDGERNAME")),
+                ["amount"] = Normalize(DescendantValue(entry, "AMOUNT")),
+                ["is_deemed_positive"] = Normalize(DescendantValue(entry, "ISDEEMEDPOSITIVE")),
+            })
+            .ToArray();
+
+        return new TallySyncedVoucher(
+            identity,
+            masterId,
+            guid,
+            remoteId,
+            date,
+            voucherType,
+            voucherNumber,
+            Normalize(DescendantValue(element, "NARRATION")),
+            new Dictionary<string, object?>
+            {
+                ["alter_id"] = Normalize(DescendantValue(element, "ALTERID")),
+                ["ledger_entries"] = entries,
+            });
+    }
+
+    private static string? MasterKind(string localName) => localName.ToUpperInvariant() switch
+    {
+        "LEDGER" => "ledger",
+        "VOUCHERTYPE" => "voucher_type",
+        "STOCKITEM" => "stock_item",
+        _ => null,
+    };
+
     private static void ValidateApplicationStatus(XDocument document)
     {
         var lineError = document
@@ -259,5 +387,18 @@ internal static class TallyResponseParser
         public int GetHashCode((string Name, string? TallyGuid) value) => HashCode.Combine(
             StringComparer.OrdinalIgnoreCase.GetHashCode(value.Name),
             value.TallyGuid is null ? 0 : StringComparer.OrdinalIgnoreCase.GetHashCode(value.TallyGuid));
+    }
+
+    private sealed class StringTupleComparer : IEqualityComparer<(string Kind, string Identity)>
+    {
+        public static StringTupleComparer Instance { get; } = new();
+
+        public bool Equals((string Kind, string Identity) x, (string Kind, string Identity) y) =>
+            StringComparer.OrdinalIgnoreCase.Equals(x.Kind, y.Kind) &&
+            StringComparer.OrdinalIgnoreCase.Equals(x.Identity, y.Identity);
+
+        public int GetHashCode((string Kind, string Identity) value) => HashCode.Combine(
+            StringComparer.OrdinalIgnoreCase.GetHashCode(value.Kind),
+            StringComparer.OrdinalIgnoreCase.GetHashCode(value.Identity));
     }
 }

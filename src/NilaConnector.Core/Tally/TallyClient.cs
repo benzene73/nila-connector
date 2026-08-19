@@ -33,6 +33,36 @@ public sealed class TallyClient : ITallyClient, IDisposable
     public Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(CancellationToken cancellationToken) =>
         SendAsync(TallyRequests.OpenCompanies, TallyResponseParser.ParseOpenCompaniesAsync, cancellationToken);
 
+    public async Task<IReadOnlyList<TallyMaster>> GetMastersAsync(
+        string company,
+        CancellationToken cancellationToken)
+    {
+        var ledgers = await SendAsync(
+            TallyRequests.Ledgers(company),
+            TallyResponseParser.ParseMastersAsync,
+            cancellationToken);
+        var voucherTypes = await SendAsync(
+            TallyRequests.VoucherTypes(company),
+            TallyResponseParser.ParseMastersAsync,
+            cancellationToken);
+        var stockItems = await SendAsync(
+            TallyRequests.StockItems(company),
+            TallyResponseParser.ParseMastersAsync,
+            cancellationToken);
+
+        return ledgers.Concat(voucherTypes).Concat(stockItems).ToArray();
+    }
+
+    public Task<IReadOnlyList<TallySyncedVoucher>> GetVouchersAsync(
+        string company,
+        DateOnly fromDate,
+        DateOnly toDate,
+        CancellationToken cancellationToken) =>
+        SendAsync(
+            TallyRequests.Vouchers(company, fromDate, toDate),
+            TallyResponseParser.ParseVouchersAsync,
+            cancellationToken);
+
     public Task<TallyVoucherResult> CreateVoucherAsync(
         CreateVoucherCommand command,
         CancellationToken cancellationToken) =>
