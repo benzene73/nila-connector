@@ -127,12 +127,14 @@ public partial class App : System.Windows.Application, IDisposable
         builder.Services.AddSingleton<ITallyClient>(services =>
         {
             _ = services.GetRequiredService<TallyConnectionSettingsStore>();
-            return new TallyClient(
+            var gatewayClient = new TallyClient(
                 new HttpClient
                 {
                     Timeout = Timeout.InfiniteTimeSpan,
                 },
                 tallyOptions);
+            var readClient = new TallyConnectorReadClient(tallyOptions);
+            return new CompositeTallyClient(gatewayClient, readClient);
         });
         builder.Services.AddHostedService<TallyMonitor>();
 
