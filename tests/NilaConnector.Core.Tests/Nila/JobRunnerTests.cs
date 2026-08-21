@@ -77,6 +77,36 @@ public sealed class JobRunnerTests
         Assert.Equal(1, client.ReadBackCalls);
     }
 
+    [Fact]
+    public async Task VerificationOnlyReportsAnExistingVoucherWithoutImportingIt()
+    {
+        var client = new RecoveringTallyClient(importShouldFail: false);
+        var runner = new JobRunner(client, NullLogger<JobRunner>.Instance);
+        using var document = JsonDocument.Parse(VerificationJobJson);
+
+        var result = await runner.ExecuteAsync(document.RootElement, CancellationToken.None);
+
+        Assert.Equal("succeeded", result.Status);
+        Assert.Equal(true, result.Details["verified_existing"]);
+        Assert.Equal(0, client.ImportCalls);
+        Assert.Equal(1, client.ReadBackCalls);
+    }
+
+    [Fact]
+    public async Task VerificationOnlyMakesAnAbsentVoucherSafelyRetryable()
+    {
+        var client = new RecoveringTallyClient(voucherNumber: "DIFFERENT", importShouldFail: false);
+        var runner = new JobRunner(client, NullLogger<JobRunner>.Instance);
+        using var document = JsonDocument.Parse(VerificationJobJson);
+
+        var result = await runner.ExecuteAsync(document.RootElement, CancellationToken.None);
+
+        Assert.Equal("failed", result.Status);
+        Assert.Equal("VerifiedAbsent", result.Details["kind"]);
+        Assert.Equal(0, client.ImportCalls);
+        Assert.Equal(1, client.ReadBackCalls);
+    }
+
     private const string JobJson = """
         {
           "job_id": 12,
@@ -120,6 +150,20 @@ public sealed class JobRunnerTests
         }
         """;
 
+    private const string VerificationJobJson = """
+        {
+          "job_id": 15,
+          "job_key": "d45f7537-00d5-4463-9d70-f246257d88ef",
+          "kind": "import_vouchers",
+          "payload": {
+            "company": "Caltech",
+            "expected_count": 1,
+            "mode": "verify_only",
+            "xml": "<ENVELOPE><HEADER><TALLYREQUEST>Import</TALLYREQUEST><TYPE>Data</TYPE><ID>Vouchers</ID></HEADER><BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>Caltech</SVCURRENTCOMPANY></STATICVARIABLES></DESC><DATA><TALLYMESSAGE><VOUCHER><DATE>20260625</DATE><GUID>nila-test-guid</GUID><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>38/2026-27</VOUCHERNUMBER></VOUCHER></TALLYMESSAGE></DATA></BODY></ENVELOPE>"
+          }
+        }
+        """;
+
     private sealed class ThrowingTallyClient(TallyErrorKind kind) : ITallyClient
     {
         public Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(
@@ -149,9 +193,12 @@ public sealed class JobRunnerTests
         }
     }
 
-    private sealed class RecoveringTallyClient(string voucherNumber = "38/2026-27") : ITallyClient
+    private sealed class RecoveringTallyClient(
+        string voucherNumber = "38/2026-27",
+        bool importShouldFail = true) : ITallyClient
     {
         public int ReadBackCalls { get; private set; }
+        public int ImportCalls { get; private set; }
 
         public Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TallyCompany>>([]);
@@ -189,8 +236,13 @@ public sealed class JobRunnerTests
 
         public Task<TallyVoucherBatchResult> ImportVouchersAsync(
             ImportVouchersCommand command,
-            CancellationToken cancellationToken) =>
-            Task.FromException<TallyVoucherBatchResult>(
-                new TallyClientException(TallyErrorKind.Timeout, "The response was lost."));
+            CancellationToken cancellationToken)
+        {
+            ImportCalls++;
+            return importShouldFail
+                ? Task.FromException<TallyVoucherBatchResult>(
+                    new TallyClientException(TallyErrorKind.Timeout, "The response was lost."))
+                : Task.FromResult(new TallyVoucherBatchResult(1, 0, 0, 0, 0, 0, 42));
+        }
     }
 }

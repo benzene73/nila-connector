@@ -69,6 +69,12 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
     {
         var command = ParseVoucherImport(envelope);
         LogStarting(logger, jobId, command.Company);
+
+        if (IsVerificationOnly(envelope))
+        {
+            return await VerifyVoucherImportAsync(jobId, command, cancellationToken);
+        }
+
         TallyVoucherBatchResult result;
 
         try
@@ -108,6 +114,55 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
         });
     }
 
+    private async Task<ConnectorJobResult> VerifyVoucherImportAsync(
+        int jobId,
+        ImportVouchersCommand command,
+        CancellationToken cancellationToken)
+    {
+        VoucherImportFingerprint fingerprint =
+            TallyRequestValidator.ReadSingleVoucherFingerprint(command);
+
+        IReadOnlyList<TallySyncedVoucher> vouchers;
+        try
+        {
+            vouchers = await tallyClient.GetVouchersAsync(
+                command.Company,
+                fingerprint.Date,
+                fingerprint.Date,
+                cancellationToken);
+        }
+        catch (TallyClientException exception)
+        {
+            var message = Truncate(exception.Message, 300);
+            LogFailed(logger, jobId, exception.Kind.ToString(), message);
+            return new ConnectorJobResult(jobId, "indeterminate", new Dictionary<string, object?>
+            {
+                ["kind"] = exception.Kind.ToString(),
+                ["message"] = message,
+            });
+        }
+
+        var matches = MatchingVouchers(vouchers, fingerprint);
+        if (matches.Length == 0)
+        {
+            return new ConnectorJobResult(jobId, "failed", new Dictionary<string, object?>
+            {
+                ["kind"] = "VerifiedAbsent",
+                ["message"] = "The voucher was not found in Tally and is safe to retry.",
+            });
+        }
+
+        var match = matches[0];
+        LogRecovered(logger, jobId, match.MasterId);
+        return new ConnectorJobResult(jobId, "succeeded", new Dictionary<string, object?>
+        {
+            ["verified_existing"] = true,
+            ["master_id"] = match.MasterId,
+            ["tally_guid"] = match.TallyGuid,
+            ["voucher_number"] = match.VoucherNumber,
+        });
+    }
+
     private async Task<TallySyncedVoucher?> TryRecoverVoucherImportAsync(
         ImportVouchersCommand command,
         CancellationToken cancellationToken)
@@ -136,15 +191,27 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
             return null;
         }
 
-        var matches = vouchers.Where(voucher =>
+        var matches = MatchingVouchers(vouchers, fingerprint);
+
+        return matches.Length == 1 ? matches[0] : null;
+    }
+
+    private static TallySyncedVoucher[] MatchingVouchers(
+        IReadOnlyList<TallySyncedVoucher> vouchers,
+        VoucherImportFingerprint fingerprint) =>
+        vouchers.Where(voucher =>
             (string.Equals(voucher.TallyGuid, fingerprint.Guid, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(voucher.RemoteId, fingerprint.Guid, StringComparison.OrdinalIgnoreCase)) &&
             voucher.Date == fingerprint.Date &&
             string.Equals(voucher.VoucherType, fingerprint.VoucherType, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(voucher.VoucherNumber, fingerprint.VoucherNumber, StringComparison.Ordinal)).ToArray();
 
-        return matches.Length == 1 ? matches[0] : null;
-    }
+    private static bool IsVerificationOnly(JsonElement envelope) =>
+        envelope.TryGetProperty("payload", out var payload) &&
+        payload.ValueKind == JsonValueKind.Object &&
+        payload.TryGetProperty("mode", out var mode) &&
+        mode.ValueKind == JsonValueKind.String &&
+        string.Equals(mode.GetString(), "verify_only", StringComparison.Ordinal);
 
     private static CreateVoucherCommand ParseCreateVoucher(JsonElement envelope)
     {
