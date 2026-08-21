@@ -80,6 +80,33 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, IDisposable
         }, cancellationToken);
     }
 
+    public async Task<VoucherSemanticFingerprint?> GetVoucherFingerprintAsync(
+        string company,
+        long masterId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(company);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(masterId);
+
+        return await ExecuteAsync(async token =>
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, _options.Endpoint)
+            {
+                Content = new StringContent(
+                    TallyRequests.VoucherFingerprint(company, masterId),
+                    Encoding.UTF8,
+                    "text/xml"),
+            };
+            using var response = await _httpClient.SendAsync(request, token);
+            response.EnsureSuccessStatusCode();
+            await using var stream = await response.Content.ReadAsStreamAsync(token);
+            return await TallyResponseParser.ParseVoucherFingerprintAsync(
+                stream,
+                _options.MaxResponseBytes,
+                token);
+        }, cancellationToken);
+    }
+
     public void Dispose()
     {
         if (_disposed)

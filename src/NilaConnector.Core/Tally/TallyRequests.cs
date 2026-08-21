@@ -88,6 +88,53 @@ internal static class TallyRequests
             .ToString(SaveOptions.DisableFormatting);
     }
 
+    public static string VoucherFingerprint(string company, long masterId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(company);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(masterId);
+
+        return new XDocument(
+            new XElement("ENVELOPE",
+                new XElement("HEADER",
+                    new XElement("VERSION", "1"),
+                    new XElement("TALLYREQUEST", "Export"),
+                    new XElement("TYPE", "Collection"),
+                    new XElement("ID", "Nila Voucher Fingerprint")),
+                new XElement("BODY",
+                    new XElement("DESC",
+                        new XElement("STATICVARIABLES",
+                            new XElement("SVEXPORTFORMAT", "$$SysName:XML"),
+                            new XElement("SVCURRENTCOMPANY", company)),
+                        new XElement("TDL",
+                            new XElement("TDLMESSAGE",
+                                new XElement("COLLECTION",
+                                    new XAttribute("NAME", "Nila Voucher Fingerprint"),
+                                    new XAttribute("ISINITIALIZE", "Yes"),
+                                    new XElement("TYPE", "Voucher"),
+                                    new XElement("FILTER", "NilaMasterIdMatch"),
+                                    new XElement("NATIVEMETHOD", "Date"),
+                                    new XElement("NATIVEMETHOD", "VoucherTypeName"),
+                                    new XElement("NATIVEMETHOD", "VoucherNumber"),
+                                    new XElement("NATIVEMETHOD", "MasterID"),
+                                    new XElement("NATIVEMETHOD", "GUID"),
+                                    new XElement("NATIVEMETHOD", "RemoteID"),
+                                    new XElement("NATIVEMETHOD", "PartyLedgerName"),
+                                    new XElement("NATIVEMETHOD", "PartyName"),
+                                    new XElement("NATIVEMETHOD", "PartyGSTIN"),
+                                    new XElement("NATIVEMETHOD", "PlaceOfSupply"),
+                                    new XElement("NATIVEMETHOD", "GSTRegistrationType"),
+                                    new XElement("NATIVEMETHOD", "PersistedView"),
+                                    new XElement("NATIVEMETHOD", "IsInvoice"),
+                                    new XElement("NATIVEMETHOD", "Narration"),
+                                    new XElement("NATIVEMETHOD", "LedgerEntries.*"),
+                                    new XElement("NATIVEMETHOD", "InventoryEntries.*")),
+                                new XElement("SYSTEM",
+                                    new XAttribute("TYPE", "Formulae"),
+                                    new XAttribute("NAME", "NilaMasterIdMatch"),
+                                    $"$MasterID = {masterId.ToString(CultureInfo.InvariantCulture)}")))))))
+            .ToString(SaveOptions.DisableFormatting);
+    }
+
     public static string CreateVoucher(CreateVoucherCommand command)
     {
         var deterministicId = $"nila-job-{command.JobKey}";

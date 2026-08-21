@@ -69,22 +69,9 @@ internal static class TallyRequestValidator
         }
 
         var voucher = Elements(messages[0], "VOUCHER").Single();
-        var guid = RequireVoucherValue(voucher, "GUID", 200);
-        var voucherType = RequireVoucherValue(voucher, "VOUCHERTYPENAME", 60);
-        var voucherNumber = RequireVoucherValue(voucher, "VOUCHERNUMBER", 100);
-        var dateValue = RequireVoucherValue(voucher, "DATE", 8);
-
-        if (!DateOnly.TryParseExact(
-                dateValue,
-                "yyyyMMdd",
-                System.Globalization.CultureInfo.InvariantCulture,
-                System.Globalization.DateTimeStyles.None,
-                out var date))
-        {
-            throw new InvalidDataException("The voucher import XML has an invalid DATE value.");
-        }
-
-        return new VoucherImportFingerprint(guid, date, voucherType, voucherNumber);
+        var correlationId = RequireVoucherValue(voucher, "GUID", 200);
+        var semantic = VoucherSemanticFingerprintBuilder.FromVoucher(voucher);
+        return new VoucherImportFingerprint(correlationId, semantic);
     }
 
     private static void RequireSingleValue(XContainer document, string name, string expected)
@@ -113,7 +100,10 @@ internal static class TallyRequestValidator
 }
 
 internal sealed record VoucherImportFingerprint(
-    string Guid,
-    DateOnly Date,
-    string VoucherType,
-    string VoucherNumber);
+    string CorrelationId,
+    VoucherSemanticFingerprint Semantic)
+{
+    public DateOnly Date => Semantic.Date;
+    public string VoucherType => Semantic.VoucherType;
+    public string VoucherNumber => Semantic.VoucherNumber;
+}

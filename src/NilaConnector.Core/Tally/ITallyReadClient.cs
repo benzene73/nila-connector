@@ -13,4 +13,9 @@ public interface ITallyReadClient
         DateOnly fromDate,
         DateOnly toDate,
         CancellationToken cancellationToken);
+
+    Task<VoucherSemanticFingerprint?> GetVoucherFingerprintAsync(
+        string company,
+        long masterId,
+        CancellationToken cancellationToken);
 }

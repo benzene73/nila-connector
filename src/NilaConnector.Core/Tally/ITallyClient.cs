@@ -16,6 +16,11 @@ public interface ITallyClient
         DateOnly toDate,
         CancellationToken cancellationToken);
 
+    Task<VoucherSemanticFingerprint?> GetVoucherFingerprintAsync(
+        string company,
+        long masterId,
+        CancellationToken cancellationToken);
+
     Task<TallyVoucherResult> CreateVoucherAsync(
         CreateVoucherCommand command,
         CancellationToken cancellationToken);

@@ -114,6 +114,33 @@ internal static class TallyResponseParser
         return methods;
     }
 
+    public static async Task<VoucherSemanticFingerprint?> ParseVoucherFingerprintAsync(
+        Stream response,
+        int maxCharacters,
+        CancellationToken cancellationToken)
+    {
+        var document = await LoadDocumentAsync(response, maxCharacters, cancellationToken);
+        ValidateApplicationStatus(document);
+
+        var vouchers = document.Descendants()
+            .Where(element => element.Name.LocalName.Equals(
+                "VOUCHER",
+                StringComparison.OrdinalIgnoreCase) &&
+                element.Elements().Any(child => child.Name.LocalName.Equals(
+                    "MASTERID",
+                    StringComparison.OrdinalIgnoreCase)))
+            .ToArray();
+
+        return vouchers.Length switch
+        {
+            0 => null,
+            1 => VoucherSemanticFingerprintBuilder.FromVoucher(vouchers[0]),
+            _ => throw new TallyClientException(
+                TallyErrorKind.InvalidResponse,
+                "Tally returned multiple vouchers for one MasterID."),
+        };
+    }
+
     public static async Task<TallyVoucherBatchResult> ParseVoucherBatchImportAsync(
         Stream response,
         int maxCharacters,
@@ -168,7 +195,7 @@ internal static class TallyResponseParser
                 bufferSize: 16 * 1024,
                 leaveOpen: true);
             var rawXml = await streamReader.ReadToEndAsync(cancellationToken);
-            var sanitizedXml = RemoveInvalidXmlCharacters(rawXml);
+            var sanitizedXml = EnsureTallyUdfNamespace(RemoveInvalidXmlCharacters(rawXml));
             using var textReader = new StringReader(sanitizedXml);
             using var reader = XmlReader.Create(textReader, settings);
             return await XDocument.LoadAsync(reader, LoadOptions.None, cancellationToken);
@@ -196,6 +223,22 @@ internal static class TallyResponseParser
         }
 
         return string.Concat(value.Where(XmlConvert.IsXmlChar));
+    }
+
+    private static string EnsureTallyUdfNamespace(string value)
+    {
+        if (!value.Contains("<UDF:", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("xmlns:UDF=", StringComparison.OrdinalIgnoreCase))
+        {
+            return value;
+        }
+
+        return Regex.Replace(
+            value,
+            @"<ENVELOPE(?=\s|>)",
+            "<ENVELOPE xmlns:UDF=\"TallyUDF\"",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(1));
     }
 
     private static bool InvalidNumericCharacterReference(Match match)

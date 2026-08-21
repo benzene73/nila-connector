@@ -68,11 +68,30 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
         CancellationToken cancellationToken)
     {
         var command = ParseVoucherImport(envelope);
+        var expected = TallyRequestValidator.ReadSingleVoucherFingerprint(command);
         LogStarting(logger, jobId, command.Company);
 
         if (IsVerificationOnly(envelope))
         {
-            return await VerifyVoucherImportAsync(jobId, command, cancellationToken);
+            return await VerifyVoucherImportAsync(jobId, command, expected, cancellationToken);
+        }
+
+        CandidateEvaluation preflight;
+        try
+        {
+            preflight = await EvaluateCandidateAsync(command, expected, cancellationToken);
+        }
+        catch (TallyClientException exception)
+        {
+            return Failure(
+                jobId,
+                "PreflightUnavailable",
+                $"Nila could not verify whether this voucher already exists in Tally: {exception.Message}");
+        }
+
+        if (preflight.State != CandidateState.Absent)
+        {
+            return CandidateResult(jobId, preflight, verifiedExisting: true);
         }
 
         TallyVoucherBatchResult result;
@@ -84,25 +103,66 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
         catch (TallyClientException exception)
             when (exception.Kind is TallyErrorKind.Timeout or TallyErrorKind.Unreachable)
         {
-            var recovered = await TryRecoverVoucherImportAsync(command, cancellationToken);
-            if (recovered is null)
+            CandidateEvaluation recovery;
+            try
             {
-                throw;
+                recovery = await EvaluateCandidateAsync(command, expected, cancellationToken);
+            }
+            catch (TallyClientException readBackException)
+            {
+                return Indeterminate(
+                    jobId,
+                    "ReadbackUnavailable",
+                    $"Tally did not return a trustworthy import response, and Nila could not verify the outcome: {readBackException.Message}");
             }
 
-            LogRecovered(logger, jobId, recovered.MasterId);
-            return new ConnectorJobResult(jobId, "succeeded", new Dictionary<string, object?>
+            if (recovery.State == CandidateState.Equivalent)
             {
-                ["recovered"] = true,
-                ["master_id"] = recovered.MasterId,
-                ["tally_guid"] = recovered.TallyGuid,
-                ["voucher_number"] = recovered.VoucherNumber,
-            });
+                return CandidateResult(jobId, recovery, recovered: true);
+            }
+
+            if (recovery.State == CandidateState.Absent)
+            {
+                return Indeterminate(
+                    jobId,
+                    "OutcomeUnknown",
+                    "Tally did not return a trustworthy import response. No voucher is visible yet; verify again before retrying the create.");
+            }
+
+            return Indeterminate(
+                jobId,
+                recovery.State == CandidateState.Duplicate ? "DuplicateConflict" : "VoucherConflict",
+                recovery.Message);
+        }
+
+        CandidateEvaluation readBack;
+        try
+        {
+            readBack = await EvaluateCandidateAsync(command, expected, cancellationToken);
+        }
+        catch (TallyClientException exception)
+        {
+            return Indeterminate(
+                jobId,
+                "ReadbackUnavailable",
+                $"Tally accepted the import, but Nila could not read back its authoritative identity: {exception.Message}");
+        }
+
+        if (readBack.State != CandidateState.Equivalent)
+        {
+            return Indeterminate(
+                jobId,
+                readBack.State == CandidateState.Duplicate
+                    ? "PostImportDuplicate"
+                    : "PostImportConflict",
+                readBack.State == CandidateState.Absent
+                    ? "Tally accepted the import, but the voucher was not found during read-back."
+                    : readBack.Message);
         }
 
         LogBatchSucceeded(logger, jobId, command.ExpectedCount, result.LastVoucherId);
-
-        return new ConnectorJobResult(jobId, "succeeded", new Dictionary<string, object?>
+        var succeeded = CandidateResult(jobId, readBack);
+        var details = new Dictionary<string, object?>(succeeded.Details)
         {
             ["created"] = result.Created,
             ["altered"] = result.Altered,
@@ -111,100 +171,172 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
             ["errors"] = result.Errors,
             ["exceptions"] = result.Exceptions,
             ["last_voucher_id"] = result.LastVoucherId,
-        });
+        };
+        return succeeded with { Details = details };
     }
 
     private async Task<ConnectorJobResult> VerifyVoucherImportAsync(
         int jobId,
         ImportVouchersCommand command,
+        VoucherImportFingerprint expected,
         CancellationToken cancellationToken)
     {
-        VoucherImportFingerprint fingerprint =
-            TallyRequestValidator.ReadSingleVoucherFingerprint(command);
-
-        IReadOnlyList<TallySyncedVoucher> vouchers;
+        CandidateEvaluation evaluation;
         try
         {
-            vouchers = await tallyClient.GetVouchersAsync(
-                command.Company,
-                fingerprint.Date,
-                fingerprint.Date,
-                cancellationToken);
+            evaluation = await EvaluateCandidateAsync(command, expected, cancellationToken);
         }
         catch (TallyClientException exception)
         {
-            var message = Truncate(exception.Message, 300);
-            LogFailed(logger, jobId, exception.Kind.ToString(), message);
-            return new ConnectorJobResult(jobId, "indeterminate", new Dictionary<string, object?>
+            return Indeterminate(
+                jobId,
+                "VerificationUnavailable",
+                $"Nila could not verify the voucher in Tally: {exception.Message}");
+        }
+
+        if (evaluation.State == CandidateState.Absent)
+        {
+            return Failure(
+                jobId,
+                "VerifiedAbsent",
+                "The voucher was not found in Tally and is safe to retry.");
+        }
+
+        return CandidateResult(jobId, evaluation, verifiedExisting: true);
+    }
+
+    private async Task<CandidateEvaluation> EvaluateCandidateAsync(
+        ImportVouchersCommand command,
+        VoucherImportFingerprint expected,
+        CancellationToken cancellationToken)
+    {
+        var vouchers = await tallyClient.GetVouchersAsync(
+            command.Company,
+            expected.Date,
+            expected.Date,
+            cancellationToken);
+
+        var candidates = vouchers.Where(voucher =>
+            voucher.Date == expected.Date &&
+            string.Equals(
+                voucher.VoucherType,
+                expected.VoucherType,
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(
+                voucher.VoucherNumber,
+                expected.VoucherNumber,
+                StringComparison.Ordinal)).ToArray();
+
+        if (candidates.Length == 0)
+        {
+            return new CandidateEvaluation(
+                CandidateState.Absent,
+                null,
+                "No voucher with the candidate key exists in Tally.");
+        }
+
+        if (candidates.Length > 1)
+        {
+            return new CandidateEvaluation(
+                CandidateState.Duplicate,
+                null,
+                $"Tally contains {candidates.Length} vouchers with the same company, type, number, and date. Nila will not choose one automatically.");
+        }
+
+        var candidate = candidates[0];
+        if (candidate.MasterId is not > 0)
+        {
+            return new CandidateEvaluation(
+                CandidateState.Conflict,
+                candidate,
+                "Tally returned a candidate voucher without a usable MasterID.");
+        }
+
+        var actual = await tallyClient.GetVoucherFingerprintAsync(
+            command.Company,
+            candidate.MasterId.Value,
+            cancellationToken);
+
+        if (actual is null)
+        {
+            return new CandidateEvaluation(
+                CandidateState.Conflict,
+                candidate,
+                "The candidate voucher disappeared before Nila could verify its contents.");
+        }
+
+        return string.Equals(
+            actual.CanonicalHash,
+            expected.Semantic.CanonicalHash,
+            StringComparison.Ordinal)
+                ? new CandidateEvaluation(
+                    CandidateState.Equivalent,
+                    candidate,
+                    "The existing Tally voucher has the same material contents.")
+                : new CandidateEvaluation(
+                    CandidateState.Conflict,
+                    candidate,
+                    "A Tally voucher has the same type, number, and date but different material contents. Nila will not overwrite or duplicate it.");
+    }
+
+    private ConnectorJobResult CandidateResult(
+        int jobId,
+        CandidateEvaluation evaluation,
+        bool recovered = false,
+        bool verifiedExisting = false)
+    {
+        if (evaluation.State == CandidateState.Equivalent && evaluation.Voucher is { } voucher)
+        {
+            LogRecovered(logger, jobId, voucher.MasterId);
+            return new ConnectorJobResult(jobId, "succeeded", new Dictionary<string, object?>
             {
-                ["kind"] = exception.Kind.ToString(),
-                ["message"] = message,
+                ["recovered"] = recovered,
+                ["verified_existing"] = verifiedExisting,
+                ["master_id"] = voucher.MasterId,
+                ["tally_guid"] = voucher.TallyGuid,
+                ["voucher_number"] = voucher.VoucherNumber,
             });
         }
 
-        var matches = MatchingVouchers(vouchers, fingerprint);
-        if (matches.Length == 0)
-        {
-            return new ConnectorJobResult(jobId, "failed", new Dictionary<string, object?>
-            {
-                ["kind"] = "VerifiedAbsent",
-                ["message"] = "The voucher was not found in Tally and is safe to retry.",
-            });
-        }
+        return Failure(
+            jobId,
+            evaluation.State == CandidateState.Duplicate ? "DuplicateConflict" : "VoucherConflict",
+            evaluation.Message);
+    }
 
-        var match = matches[0];
-        LogRecovered(logger, jobId, match.MasterId);
-        return new ConnectorJobResult(jobId, "succeeded", new Dictionary<string, object?>
+    private ConnectorJobResult Failure(int jobId, string kind, string message) =>
+        TerminalResult(jobId, "failed", kind, message);
+
+    private ConnectorJobResult Indeterminate(int jobId, string kind, string message) =>
+        TerminalResult(jobId, "indeterminate", kind, message);
+
+    private ConnectorJobResult TerminalResult(
+        int jobId,
+        string status,
+        string kind,
+        string message)
+    {
+        message = Truncate(message, 300);
+        LogFailed(logger, jobId, kind, message);
+        return new ConnectorJobResult(jobId, status, new Dictionary<string, object?>
         {
-            ["verified_existing"] = true,
-            ["master_id"] = match.MasterId,
-            ["tally_guid"] = match.TallyGuid,
-            ["voucher_number"] = match.VoucherNumber,
+            ["kind"] = kind,
+            ["message"] = message,
         });
     }
 
-    private async Task<TallySyncedVoucher?> TryRecoverVoucherImportAsync(
-        ImportVouchersCommand command,
-        CancellationToken cancellationToken)
+    private enum CandidateState
     {
-        VoucherImportFingerprint fingerprint;
-        try
-        {
-            fingerprint = TallyRequestValidator.ReadSingleVoucherFingerprint(command);
-        }
-        catch (InvalidDataException)
-        {
-            return null;
-        }
-
-        IReadOnlyList<TallySyncedVoucher> vouchers;
-        try
-        {
-            vouchers = await tallyClient.GetVouchersAsync(
-                command.Company,
-                fingerprint.Date,
-                fingerprint.Date,
-                cancellationToken);
-        }
-        catch (TallyClientException)
-        {
-            return null;
-        }
-
-        var matches = MatchingVouchers(vouchers, fingerprint);
-
-        return matches.Length == 1 ? matches[0] : null;
+        Absent,
+        Equivalent,
+        Conflict,
+        Duplicate,
     }
 
-    private static TallySyncedVoucher[] MatchingVouchers(
-        IReadOnlyList<TallySyncedVoucher> vouchers,
-        VoucherImportFingerprint fingerprint) =>
-        vouchers.Where(voucher =>
-            (string.Equals(voucher.TallyGuid, fingerprint.Guid, StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(voucher.RemoteId, fingerprint.Guid, StringComparison.OrdinalIgnoreCase)) &&
-            voucher.Date == fingerprint.Date &&
-            string.Equals(voucher.VoucherType, fingerprint.VoucherType, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(voucher.VoucherNumber, fingerprint.VoucherNumber, StringComparison.Ordinal)).ToArray();
+    private sealed record CandidateEvaluation(
+        CandidateState State,
+        TallySyncedVoucher? Voucher,
+        string Message);
 
     private static bool IsVerificationOnly(JsonElement envelope) =>
         envelope.TryGetProperty("payload", out var payload) &&
