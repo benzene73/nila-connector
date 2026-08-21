@@ -233,7 +233,8 @@ internal static class TallyResponseParser
         }
 
         var tallyGuid = AttributeValue(element, "GUID") ?? DescendantValue(element, "GUID");
-        return new TallyCompany(name.Trim(), Normalize(tallyGuid));
+        var gstin = AttributeValue(element, "GSTIN") ?? DescendantValue(element, "GSTIN");
+        return new TallyCompany(name.Trim(), Normalize(tallyGuid), Normalize(gstin));
     }
 
     private static void ValidateApplicationStatus(XDocument document)

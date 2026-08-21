@@ -27,6 +27,7 @@ public static class PhoenixProtocol
             {
                 ["name"] = company.Name,
                 ["tally_guid"] = company.TallyGuid,
+                ["gstin"] = company.Gstin,
             }).ToArray(),
         });
 

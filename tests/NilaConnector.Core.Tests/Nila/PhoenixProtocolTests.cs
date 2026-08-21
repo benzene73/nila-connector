@@ -25,7 +25,7 @@ public sealed class PhoenixProtocolTests
             "1",
             "tally_device:42",
             "0.1.0",
-            [new TallyCompany("Nila", "company-guid")]);
+            [new TallyCompany("Nila", "company-guid", "33AEWPH4158J1Z3")]);
         using var document = JsonDocument.Parse(json);
         var message = document.RootElement;
 
@@ -37,6 +37,7 @@ public sealed class PhoenixProtocolTests
         var company = Assert.Single(message[4].GetProperty("companies").EnumerateArray());
         Assert.Equal("Nila", company.GetProperty("name").GetString());
         Assert.Equal("company-guid", company.GetProperty("tally_guid").GetString());
+        Assert.Equal("33AEWPH4158J1Z3", company.GetProperty("gstin").GetString());
     }
 
     [Fact]

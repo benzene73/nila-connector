@@ -161,11 +161,14 @@ public sealed class TallyClientTests
 
         Assert.Collection(
             companies,
-            company => Assert.Equal(("ABC Pvt Ltd", "abc-guid"), (company.Name, company.TallyGuid)),
-            company => Assert.Equal(("XYZ & Co", "xyz-guid"), (company.Name, company.TallyGuid)));
+            company => Assert.Equal(
+                ("ABC Pvt Ltd", "abc-guid", "33AEWPH4158J1Z3"),
+                (company.Name, company.TallyGuid, company.Gstin)),
+            company => Assert.Equal(("XYZ & Co", "xyz-guid", null), (company.Name, company.TallyGuid, company.Gstin)));
         Assert.Contains("<TYPE>Company</TYPE>", request, StringComparison.Ordinal);
         Assert.DoesNotContain("Company on Disk", request, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("<NATIVEMETHOD>GUID</NATIVEMETHOD>", request, StringComparison.Ordinal);
+        Assert.Contains("<COMPUTE>GSTIN : $GSTRegNumber:TaxUnit:", request, StringComparison.Ordinal);
     }
 
     [Fact]

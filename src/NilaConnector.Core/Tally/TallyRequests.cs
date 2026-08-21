@@ -25,6 +25,7 @@ internal static class TallyRequests
                     <TYPE>Company</TYPE>
                     <NATIVEMETHOD>Name</NATIVEMETHOD>
                     <NATIVEMETHOD>GUID</NATIVEMETHOD>
+                    <COMPUTE>GSTIN : $GSTRegNumber:TaxUnit:($ExciseUnitName:Company:$Name)</COMPUTE>
                   </COLLECTION>
                 </TDLMESSAGE>
               </TDL>
