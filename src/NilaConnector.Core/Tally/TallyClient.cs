@@ -30,8 +30,25 @@ public sealed class TallyClient : ITallyGatewayClient, IDisposable
         _options = options;
     }
 
-    public Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(CancellationToken cancellationToken) =>
-        SendAsync(TallyRequests.OpenCompanies, TallyResponseParser.ParseOpenCompaniesAsync, cancellationToken);
+    public async Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(CancellationToken cancellationToken)
+    {
+        var companies = await SendAsync(
+            TallyRequests.OpenCompanies,
+            TallyResponseParser.ParseOpenCompaniesAsync,
+            cancellationToken);
+        var enriched = new List<TallyCompany>(companies.Count);
+
+        foreach (var company in companies)
+        {
+            var gstin = await SendAsync(
+                TallyRequests.CompanyGstRegistrations(company.Name),
+                TallyResponseParser.ParseCompanyGstinAsync,
+                cancellationToken);
+            enriched.Add(company with { Gstin = gstin ?? company.Gstin });
+        }
+
+        return enriched;
+    }
 
     public Task<TallyVoucherResult> CreateVoucherAsync(
         CreateVoucherCommand command,

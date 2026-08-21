@@ -19,8 +19,13 @@ public sealed class TallyClientTests
               <COMPANY NAME="Second company"><GUID>second-guid</GUID></COMPANY>
             </COLLECTION></DATA></BODY></ENVELOPE>
             """;
-        await using var firstServer = new FakeTallyServer(firstResponse);
-        await using var secondServer = new FakeTallyServer(secondResponse);
+        const string noGstinResponse = """
+            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
+            <TAXUNIT NAME="Default Tax Unit"></TAXUNIT>
+            </COLLECTION></DATA></BODY></ENVELOPE>
+            """;
+        await using var firstServer = new FakeTallyServer(firstResponse, noGstinResponse);
+        await using var secondServer = new FakeTallyServer(secondResponse, noGstinResponse);
         var options = new TallyClientOptions { Endpoint = firstServer.Endpoint };
         using var client = new TallyClient(
             new HttpClient { Timeout = Timeout.InfiniteTimeSpan },
@@ -153,11 +158,21 @@ public sealed class TallyClientTests
     public async Task DiscoversOpenCompaniesThroughARealHttpRequest()
     {
         var response = await File.ReadAllTextAsync(Fixture("open-companies.xml"));
-        await using var server = new FakeTallyServer(response);
+        const string abcGstinResponse = """
+            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
+            <TAXUNIT NAME="GST Registration"><GSTREGNUMBER>33AEWPH4158J1Z3</GSTREGNUMBER></TAXUNIT>
+            </COLLECTION></DATA></BODY></ENVELOPE>
+            """;
+        const string xyzGstinResponse = """
+            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
+            <TAXUNIT NAME="Default Tax Unit"></TAXUNIT>
+            </COLLECTION></DATA></BODY></ENVELOPE>
+            """;
+        await using var server = new FakeTallyServer(response, abcGstinResponse, xyzGstinResponse);
         using var client = CreateClient(server.Endpoint);
 
         var companies = await client.GetOpenCompaniesAsync(CancellationToken.None);
-        var request = await server.RequestBody;
+        var requests = await server.RequestBodies;
 
         Assert.Collection(
             companies,
@@ -165,10 +180,12 @@ public sealed class TallyClientTests
                 ("ABC Pvt Ltd", "abc-guid", "33AEWPH4158J1Z3"),
                 (company.Name, company.TallyGuid, company.Gstin)),
             company => Assert.Equal(("XYZ & Co", "xyz-guid", null), (company.Name, company.TallyGuid, company.Gstin)));
-        Assert.Contains("<TYPE>Company</TYPE>", request, StringComparison.Ordinal);
-        Assert.DoesNotContain("Company on Disk", request, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("<NATIVEMETHOD>GUID</NATIVEMETHOD>", request, StringComparison.Ordinal);
-        Assert.Contains("<COMPUTE>GSTIN : $GSTRegNumber:TaxUnit:", request, StringComparison.Ordinal);
+        Assert.Contains("<TYPE>Company</TYPE>", requests[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("Company on Disk", requests[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<NATIVEMETHOD>GUID</NATIVEMETHOD>", requests[0], StringComparison.Ordinal);
+        Assert.Contains("<SVCURRENTCOMPANY>ABC Pvt Ltd</SVCURRENTCOMPANY>", requests[1], StringComparison.Ordinal);
+        Assert.Contains("<TYPE>Tax Unit</TYPE>", requests[1], StringComparison.Ordinal);
+        Assert.Contains("<SVCURRENTCOMPANY>XYZ &amp; Co</SVCURRENTCOMPANY>", requests[2], StringComparison.Ordinal);
     }
 
     [Fact]

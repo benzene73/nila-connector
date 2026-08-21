@@ -51,6 +51,21 @@ internal static class TallyResponseParser
             .ToArray();
     }
 
+    public static async Task<string?> ParseCompanyGstinAsync(
+        Stream response,
+        int maxCharacters,
+        CancellationToken cancellationToken)
+    {
+        var document = await LoadDocumentAsync(response, maxCharacters, cancellationToken);
+        ValidateApplicationStatus(document);
+
+        return document
+            .Descendants()
+            .Where(element => element.Name.LocalName.Equals("GSTREGNUMBER", StringComparison.OrdinalIgnoreCase))
+            .Select(element => Normalize(element.Value))
+            .FirstOrDefault(value => value is not null);
+    }
+
     public static async Task<TallyVoucherBatchResult> ParseVoucherBatchImportAsync(
         Stream response,
         int maxCharacters,
