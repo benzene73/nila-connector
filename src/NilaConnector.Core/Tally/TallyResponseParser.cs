@@ -66,6 +66,54 @@ internal static class TallyResponseParser
             .FirstOrDefault(value => value is not null);
     }
 
+    public static async Task<IReadOnlyDictionary<string, string>> ParseVoucherNumberingMethodsAsync(
+        Stream response,
+        int maxCharacters,
+        CancellationToken cancellationToken)
+    {
+        var document = await LoadDocumentAsync(response, maxCharacters, cancellationToken);
+        ValidateApplicationStatus(document);
+
+        var methods = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var voucherType in document.Descendants()
+                     .Where(element => element.Name.LocalName.Equals(
+                         "VOUCHERTYPE",
+                         StringComparison.OrdinalIgnoreCase)))
+        {
+            var name = Normalize(voucherType.Attribute("NAME")?.Value);
+            if (name is null)
+            {
+                continue;
+            }
+
+            var seriesMethods = voucherType.Elements()
+                .Where(element => element.Name.LocalName.Equals(
+                    "VOUCHERNUMBERSERIES.LIST",
+                    StringComparison.OrdinalIgnoreCase))
+                .SelectMany(series => series.Elements())
+                .Where(element => element.Name.LocalName.Equals(
+                    "NUMBERINGMETHOD",
+                    StringComparison.OrdinalIgnoreCase))
+                .Select(element => Normalize(element.Value))
+                .Where(method => method is not null)
+                .Cast<string>()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (seriesMethods.Length == 1)
+            {
+                methods[name] = seriesMethods[0];
+            }
+            else if (seriesMethods.Length > 1)
+            {
+                methods[name] = $"Mixed: {string.Join(", ", seriesMethods)}";
+            }
+        }
+
+        return methods;
+    }
+
     public static async Task<TallyVoucherBatchResult> ParseVoucherBatchImportAsync(
         Stream response,
         int maxCharacters,

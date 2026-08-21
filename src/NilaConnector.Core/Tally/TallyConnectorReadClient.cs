@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using NilaConnector.Core.Models;
 using TallyConnector.Core.Models.Request;
 using TallyConnector.Models.TallyPrime.V7;
@@ -42,9 +43,13 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, IDisposable
             var ledgers = await _service.GetLedgersAsync(request, token);
             var voucherTypes = await _service.GetVoucherTypesAsync(request, token);
             var stockItems = await _service.GetStockItemsAsync(request, token);
+            var numberingMethods = await GetVoucherNumberingMethodsAsync(company, token);
 
             return ledgers.Select(MapLedger)
-                .Concat(voucherTypes.Select(MapVoucherType))
+                .Concat(voucherTypes.Select(voucherType =>
+                    MapVoucherType(
+                        voucherType,
+                        numberingMethods.GetValueOrDefault(voucherType.Name))))
                 .Concat(stockItems.Select(MapStockItem))
                 .ToArray();
         }, cancellationToken);
@@ -166,7 +171,30 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, IDisposable
                 ["ifsc"] = Clean(ledger.IFSCODE),
             });
 
-    private static TallyMaster MapVoucherType(VoucherType voucherType) =>
+    private async Task<IReadOnlyDictionary<string, string>> GetVoucherNumberingMethodsAsync(
+        string company,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, _options.Endpoint)
+        {
+            Content = new StringContent(
+                TallyRequests.VoucherNumberingMethods(company),
+                Encoding.UTF8,
+                "text/xml"),
+        };
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+
+        return await TallyResponseParser.ParseVoucherNumberingMethodsAsync(
+            stream,
+            _options.MaxResponseBytes,
+            cancellationToken);
+    }
+
+    private static TallyMaster MapVoucherType(
+        VoucherType voucherType,
+        string? seriesNumberingMethod) =>
         Master(
             "voucher_type",
             voucherType.Name,
@@ -176,7 +204,9 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, IDisposable
             {
                 ["parent"] = Clean(voucherType.Parent),
                 ["bill_wise"] = null,
-                ["numbering_method"] = Clean(voucherType.NumberingMethod),
+                // TallyPrime 7 stores the effective value on VOUCHERNUMBERSERIES.LIST.
+                // Its legacy top-level NUMBERINGMETHOD can misleadingly remain "None".
+                ["numbering_method"] = Clean(seriesNumberingMethod) ?? Clean(voucherType.NumberingMethod),
                 ["is_active"] = YesNo(voucherType.IsActive),
                 ["base_units"] = null,
                 ["core_voucher_type"] = voucherType.CoreVoucherType?.ToString(),

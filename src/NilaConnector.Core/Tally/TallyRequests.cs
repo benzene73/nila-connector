@@ -61,6 +61,33 @@ internal static class TallyRequests
             .ToString(SaveOptions.DisableFormatting);
     }
 
+    public static string VoucherNumberingMethods(string company)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(company);
+
+        return new XDocument(
+            new XElement("ENVELOPE",
+                new XElement("HEADER",
+                    new XElement("VERSION", "1"),
+                    new XElement("TALLYREQUEST", "Export"),
+                    new XElement("TYPE", "Collection"),
+                    new XElement("ID", "Nila Voucher Numbering")),
+                new XElement("BODY",
+                    new XElement("DESC",
+                        new XElement("STATICVARIABLES",
+                            new XElement("SVEXPORTFORMAT", "$$SysName:XML"),
+                            new XElement("SVCURRENTCOMPANY", company)),
+                        new XElement("TDL",
+                            new XElement("TDLMESSAGE",
+                                new XElement("COLLECTION",
+                                    new XAttribute("NAME", "Nila Voucher Numbering"),
+                                    new XAttribute("ISINITIALIZE", "Yes"),
+                                    new XElement("TYPE", "VoucherType"),
+                                    new XElement("NATIVEMETHOD", "Name"),
+                                    new XElement("NATIVEMETHOD", "VoucherNumberSeries.*"))))))))
+            .ToString(SaveOptions.DisableFormatting);
+    }
+
     public static string CreateVoucher(CreateVoucherCommand command)
     {
         var deterministicId = $"nila-job-{command.JobKey}";
