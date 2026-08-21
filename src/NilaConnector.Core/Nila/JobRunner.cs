@@ -69,7 +69,31 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
     {
         var command = ParseVoucherImport(envelope);
         LogStarting(logger, jobId, command.Company);
-        var result = await tallyClient.ImportVouchersAsync(command, cancellationToken);
+        TallyVoucherBatchResult result;
+
+        try
+        {
+            result = await tallyClient.ImportVouchersAsync(command, cancellationToken);
+        }
+        catch (TallyClientException exception)
+            when (exception.Kind is TallyErrorKind.Timeout or TallyErrorKind.Unreachable)
+        {
+            var recovered = await TryRecoverVoucherImportAsync(command, cancellationToken);
+            if (recovered is null)
+            {
+                throw;
+            }
+
+            LogRecovered(logger, jobId, recovered.MasterId);
+            return new ConnectorJobResult(jobId, "succeeded", new Dictionary<string, object?>
+            {
+                ["recovered"] = true,
+                ["master_id"] = recovered.MasterId,
+                ["tally_guid"] = recovered.TallyGuid,
+                ["voucher_number"] = recovered.VoucherNumber,
+            });
+        }
+
         LogBatchSucceeded(logger, jobId, command.ExpectedCount, result.LastVoucherId);
 
         return new ConnectorJobResult(jobId, "succeeded", new Dictionary<string, object?>
@@ -82,6 +106,44 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
             ["exceptions"] = result.Exceptions,
             ["last_voucher_id"] = result.LastVoucherId,
         });
+    }
+
+    private async Task<TallySyncedVoucher?> TryRecoverVoucherImportAsync(
+        ImportVouchersCommand command,
+        CancellationToken cancellationToken)
+    {
+        VoucherImportFingerprint fingerprint;
+        try
+        {
+            fingerprint = TallyRequestValidator.ReadSingleVoucherFingerprint(command);
+        }
+        catch (InvalidDataException)
+        {
+            return null;
+        }
+
+        IReadOnlyList<TallySyncedVoucher> vouchers;
+        try
+        {
+            vouchers = await tallyClient.GetVouchersAsync(
+                command.Company,
+                fingerprint.Date,
+                fingerprint.Date,
+                cancellationToken);
+        }
+        catch (TallyClientException)
+        {
+            return null;
+        }
+
+        var matches = vouchers.Where(voucher =>
+            (string.Equals(voucher.TallyGuid, fingerprint.Guid, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(voucher.RemoteId, fingerprint.Guid, StringComparison.OrdinalIgnoreCase)) &&
+            voucher.Date == fingerprint.Date &&
+            string.Equals(voucher.VoucherType, fingerprint.VoucherType, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(voucher.VoucherNumber, fingerprint.VoucherNumber, StringComparison.Ordinal)).ToArray();
+
+        return matches.Length == 1 ? matches[0] : null;
     }
 
     private static CreateVoucherCommand ParseCreateVoucher(JsonElement envelope)
@@ -214,6 +276,9 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
 
     [LoggerMessage(EventId = 5002, Level = LogLevel.Warning, Message = "Tally job {JobId} failed ({Kind}): {Reason}")]
     private static partial void LogFailed(ILogger logger, int jobId, string kind, string reason);
+
+    [LoggerMessage(EventId = 5004, Level = LogLevel.Information, Message = "Recovered Tally job {JobId} by read-back with MasterID {MasterId}")]
+    private static partial void LogRecovered(ILogger logger, int jobId, long? masterId);
 }
 
 public sealed record ConnectorJobResult(

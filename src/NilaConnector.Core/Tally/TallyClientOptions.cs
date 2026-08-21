@@ -10,7 +10,7 @@ public sealed class TallyClientOptions
         init => _endpoint = ValidateEndpoint(value);
     }
 
-    public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(5);
+    public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(5);
 

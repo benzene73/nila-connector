@@ -10,6 +10,18 @@ internal static class TallyRequestValidator
 
     public static void ValidateVoucherImport(ImportVouchersCommand command)
     {
+        _ = ReadSingleVoucherFingerprint(command, requireSingleVoucher: false);
+    }
+
+    public static VoucherImportFingerprint ReadSingleVoucherFingerprint(
+        ImportVouchersCommand command) =>
+        ReadSingleVoucherFingerprint(command, requireSingleVoucher: true)
+        ?? throw new InvalidDataException("The voucher import must contain exactly one voucher for recovery.");
+
+    private static VoucherImportFingerprint? ReadSingleVoucherFingerprint(
+        ImportVouchersCommand command,
+        bool requireSingleVoucher)
+    {
         if (command.Xml.Length == 0 || command.Xml.Length > MaxRequestCharacters)
         {
             throw new InvalidDataException("The voucher import XML has an invalid size.");
@@ -45,6 +57,34 @@ internal static class TallyRequestValidator
         {
             throw new InvalidDataException("The voucher import XML does not match its expected voucher count.");
         }
+
+        if (!requireSingleVoucher)
+        {
+            return null;
+        }
+
+        if (command.ExpectedCount != 1 || messages.Length != 1)
+        {
+            throw new InvalidDataException("The voucher import must contain exactly one voucher for recovery.");
+        }
+
+        var voucher = Elements(messages[0], "VOUCHER").Single();
+        var guid = RequireVoucherValue(voucher, "GUID", 200);
+        var voucherType = RequireVoucherValue(voucher, "VOUCHERTYPENAME", 60);
+        var voucherNumber = RequireVoucherValue(voucher, "VOUCHERNUMBER", 100);
+        var dateValue = RequireVoucherValue(voucher, "DATE", 8);
+
+        if (!DateOnly.TryParseExact(
+                dateValue,
+                "yyyyMMdd",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None,
+                out var date))
+        {
+            throw new InvalidDataException("The voucher import XML has an invalid DATE value.");
+        }
+
+        return new VoucherImportFingerprint(guid, date, voucherType, voucherNumber);
     }
 
     private static void RequireSingleValue(XContainer document, string name, string expected)
@@ -59,4 +99,21 @@ internal static class TallyRequestValidator
     private static IEnumerable<XElement> Elements(XContainer container, string name) =>
         container.Descendants().Where(element =>
             element.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+    private static string RequireVoucherValue(XContainer voucher, string name, int maximumLength)
+    {
+        var values = Elements(voucher, name).Select(element => element.Value.Trim()).ToArray();
+        if (values.Length != 1 || values[0].Length == 0 || values[0].Length > maximumLength)
+        {
+            throw new InvalidDataException($"The voucher import XML has an invalid {name} value.");
+        }
+
+        return values[0];
+    }
 }
+
+internal sealed record VoucherImportFingerprint(
+    string Guid,
+    DateOnly Date,
+    string VoucherType,
+    string VoucherNumber);
