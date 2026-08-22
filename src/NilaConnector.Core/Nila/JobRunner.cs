@@ -94,6 +94,22 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
             return CandidateResult(jobId, preflight, verifiedExisting: true);
         }
 
+        var partyLedger = ParseOptionalPartyLedger(envelope, command.Company);
+        var ledgerCreated = false;
+        if (partyLedger is not null)
+        {
+            var masters = await tallyClient.GetMastersAsync(command.Company, cancellationToken);
+            var exists = masters.Any(master =>
+                string.Equals(master.Kind, "ledger", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(master.Name, partyLedger.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (!exists)
+            {
+                await tallyClient.CreateLedgerAsync(partyLedger, cancellationToken);
+                ledgerCreated = true;
+            }
+        }
+
         TallyVoucherBatchResult result;
 
         try
@@ -171,6 +187,7 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
             ["errors"] = result.Errors,
             ["exceptions"] = result.Exceptions,
             ["last_voucher_id"] = result.LastVoucherId,
+            ["ledger_created"] = ledgerCreated,
         };
         return succeeded with { Details = details };
     }
@@ -420,6 +437,30 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
         var xml = BoundedString(payload, "xml", 750_000, trim: false);
         var expectedCount = RequiredPositiveInt(payload, "expected_count");
         return new ImportVouchersCommand(company, xml, expectedCount);
+    }
+
+    private static CreateLedgerCommand? ParseOptionalPartyLedger(JsonElement envelope, string company)
+    {
+        if (!envelope.TryGetProperty("payload", out var payload) ||
+            !payload.TryGetProperty("party_ledger", out var ledger) ||
+            ledger.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (ledger.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException("The party ledger payload is invalid.");
+        }
+
+        return new CreateLedgerCommand(
+            company,
+            BoundedString(ledger, "name", 200),
+            BoundedString(ledger, "parent", 100),
+            BoundedString(ledger, "gstin", 15).ToUpperInvariant(),
+            BoundedString(ledger, "registration_type", 40),
+            BoundedString(ledger, "state", 100),
+            BoundedString(ledger, "country", 100));
     }
 
     private static int RequiredPositiveInt(JsonElement element, string property)

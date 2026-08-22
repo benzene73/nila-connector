@@ -58,6 +58,15 @@ public sealed class TallyClient : ITallyGatewayClient, IDisposable
             TallyResponseParser.ParseVoucherImportAsync,
             cancellationToken);
 
+    public Task<TallyVoucherBatchResult> CreateLedgerAsync(
+        CreateLedgerCommand command,
+        CancellationToken cancellationToken) =>
+        SendAsync(
+            TallyRequests.CreateLedger(command),
+            (response, maxCharacters, token) =>
+                TallyResponseParser.ParseVoucherBatchImportAsync(response, maxCharacters, 1, token),
+            cancellationToken);
+
     public Task<TallyVoucherBatchResult> ImportVouchersAsync(
         ImportVouchersCommand command,
         CancellationToken cancellationToken)

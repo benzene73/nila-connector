@@ -6,6 +6,36 @@ namespace NilaConnector.Core.Tally;
 
 internal static class TallyRequests
 {
+    public static string CreateLedger(CreateLedgerCommand command)
+    {
+        var document = new XDocument(
+            new XElement("ENVELOPE",
+                new XElement("HEADER",
+                    new XElement("VERSION", "1"),
+                    new XElement("TALLYREQUEST", "Import"),
+                    new XElement("TYPE", "Data"),
+                    new XElement("ID", "All Masters")),
+                new XElement("BODY",
+                    new XElement("DESC",
+                        new XElement("STATICVARIABLES",
+                            new XElement("SVCURRENTCOMPANY", command.Company))),
+                    new XElement("DATA",
+                        new XElement("TALLYMESSAGE",
+                            new XElement("LEDGER",
+                                new XAttribute("NAME", command.Name),
+                                new XAttribute("ACTION", "Create"),
+                                new XElement("NAME", command.Name),
+                                new XElement("PARENT", command.Parent),
+                                new XElement("ISBILLWISEON", "Yes"),
+                                new XElement("AFFECTSSTOCK", "No"),
+                                new XElement("COUNTRYNAME", command.Country),
+                                new XElement("STATENAME", command.State),
+                                new XElement("GSTREGISTRATIONTYPE", command.RegistrationType),
+                                new XElement("PARTYGSTIN", command.Gstin)))))));
+
+        return document.ToString(SaveOptions.DisableFormatting);
+    }
+
     public const string OpenCompanies = """
         <ENVELOPE>
           <HEADER>

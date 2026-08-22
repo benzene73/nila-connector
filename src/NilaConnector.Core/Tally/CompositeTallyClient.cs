@@ -45,6 +45,11 @@ public sealed class CompositeTallyClient : ITallyClient, IDisposable
         CancellationToken cancellationToken) =>
         ExecuteAsync(() => _gatewayClient.CreateVoucherAsync(command, cancellationToken), cancellationToken);
 
+    public Task<TallyVoucherBatchResult> CreateLedgerAsync(
+        CreateLedgerCommand command,
+        CancellationToken cancellationToken) =>
+        ExecuteAsync(() => _gatewayClient.CreateLedgerAsync(command, cancellationToken), cancellationToken);
+
     public Task<TallyVoucherBatchResult> ImportVouchersAsync(
         ImportVouchersCommand command,
         CancellationToken cancellationToken) =>
