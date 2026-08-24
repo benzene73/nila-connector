@@ -107,6 +107,10 @@ raw XML escape hatch. `gst-exceptions` reports structural GST field omissions
 found by Nila. Classification mismatches still require confirmation in Tally's
 native GST report.
 
+TallyPrime behavior verified during connector development is recorded in
+[`docs/tally-behavior.md`](docs/tally-behavior.md). Read it before changing
+voucher identity, retry, batching, or company-discovery logic.
+
 ## Windows installer
 
 Install Inno Setup, then create a self-contained x64 setup executable:
