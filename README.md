@@ -24,6 +24,8 @@ The current connector includes:
   connection monitor and voucher job runner.
 - `NilaConnector.Desktop` — WPF window, tray lifecycle, dependency injection,
   and local structured logging.
+- `NilaConnector.Diagnostics` — read-only `nila-tally` CLI with mandatory
+  company and voucher-period context.
 - `NilaConnector.Core.Tests` — unit tests for the core library.
 
 ## Development
@@ -62,6 +64,30 @@ must use `wss://`. The connector never stores the user's Nila password.
 
 Logs are written as JSON Lines under
 `%LOCALAPPDATA%\Nila\Connector\logs`.
+
+## Read-only Tally diagnostics
+
+Use the diagnostic CLI instead of sending ad hoc XML to Tally. Voucher reads
+cannot be issued without an explicit company and date scope, and every result
+prints the resolved company GUID and effective period.
+
+```powershell
+dotnet run --project src/NilaConnector.Diagnostics -- companies
+
+dotnet run --project src/NilaConnector.Diagnostics -- vouchers `
+  --company "Nila Demo" --from 2025-12-01 --to 2025-12-31
+
+dotnet run --project src/NilaConnector.Diagnostics -- voucher `
+  --company "Nila Demo" --date 2025-12-04 --master-id 1
+
+dotnet run --project src/NilaConnector.Diagnostics -- export-voucher `
+  --company "Nila Demo" --date 2025-12-04 --master-id 1
+```
+
+The endpoint defaults to `http://127.0.0.1:9000/`. Override it with
+`--endpoint URL` or `NILA_TALLY_ENDPOINT`. The CLI exposes no write, import,
+alter, cancel, or delete command. `export-voucher` emits the connector's
+structured voucher JSON; it is not a raw XML escape hatch.
 
 ## Windows installer
 

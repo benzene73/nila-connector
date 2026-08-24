@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\NilaConnector.Core\NilaConnector.Core.csproj" />
+    <ProjectReference Include="..\..\src\NilaConnector.Diagnostics\NilaConnector.Diagnostics.csproj" />
   </ItemGroup>
 
 </Project>
