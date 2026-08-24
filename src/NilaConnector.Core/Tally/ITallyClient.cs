@@ -18,6 +18,7 @@ public interface ITallyClient
 
     Task<VoucherSemanticFingerprint?> GetVoucherFingerprintAsync(
         string company,
+        DateOnly voucherDate,
         long masterId,
         CancellationToken cancellationToken);
 

@@ -16,7 +16,7 @@ public sealed class CompositeTallyClient : ITallyClient, IDisposable
     }
 
     public Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(CancellationToken cancellationToken) =>
-        ExecuteAsync(() => _gatewayClient.GetOpenCompaniesAsync(cancellationToken), cancellationToken);
+        ExecuteAsync(() => _readClient.GetOpenCompaniesAsync(cancellationToken), cancellationToken);
 
     public Task<IReadOnlyList<TallyMaster>> GetMastersAsync(
         string company,
@@ -34,10 +34,15 @@ public sealed class CompositeTallyClient : ITallyClient, IDisposable
 
     public Task<VoucherSemanticFingerprint?> GetVoucherFingerprintAsync(
         string company,
+        DateOnly voucherDate,
         long masterId,
         CancellationToken cancellationToken) =>
         ExecuteAsync(
-            () => _readClient.GetVoucherFingerprintAsync(company, masterId, cancellationToken),
+            () => _readClient.GetVoucherFingerprintAsync(
+                company,
+                voucherDate,
+                masterId,
+                cancellationToken),
             cancellationToken);
 
     public Task<TallyVoucherResult> CreateVoucherAsync(

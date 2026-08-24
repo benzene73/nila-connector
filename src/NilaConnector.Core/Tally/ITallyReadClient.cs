@@ -4,6 +4,8 @@ namespace NilaConnector.Core.Tally;
 
 public interface ITallyReadClient
 {
+    Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(CancellationToken cancellationToken);
+
     Task<IReadOnlyList<TallyMaster>> GetMastersAsync(
         string company,
         CancellationToken cancellationToken);
@@ -16,6 +18,7 @@ public interface ITallyReadClient
 
     Task<VoucherSemanticFingerprint?> GetVoucherFingerprintAsync(
         string company,
+        DateOnly voucherDate,
         long masterId,
         CancellationToken cancellationToken);
 }

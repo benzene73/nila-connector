@@ -7,39 +7,6 @@ namespace NilaConnector.Core.Tests.Tally;
 public sealed class TallyClientTests
 {
     [Fact]
-    public async Task UsesAnUpdatedEndpointWithoutRestartingTheClient()
-    {
-        const string firstResponse = """
-            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
-              <COMPANY NAME="First company"><GUID>first-guid</GUID></COMPANY>
-            </COLLECTION></DATA></BODY></ENVELOPE>
-            """;
-        const string secondResponse = """
-            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
-              <COMPANY NAME="Second company"><GUID>second-guid</GUID></COMPANY>
-            </COLLECTION></DATA></BODY></ENVELOPE>
-            """;
-        const string noGstinResponse = """
-            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
-            <TAXUNIT NAME="Default Tax Unit"></TAXUNIT>
-            </COLLECTION></DATA></BODY></ENVELOPE>
-            """;
-        await using var firstServer = new FakeTallyServer(firstResponse, noGstinResponse);
-        await using var secondServer = new FakeTallyServer(secondResponse, noGstinResponse);
-        var options = new TallyClientOptions { Endpoint = firstServer.Endpoint };
-        using var client = new TallyClient(
-            new HttpClient { Timeout = Timeout.InfiniteTimeSpan },
-            options);
-
-        var firstCompanies = await client.GetOpenCompaniesAsync(CancellationToken.None);
-        options.UpdateEndpoint(secondServer.Endpoint);
-        var secondCompanies = await client.GetOpenCompaniesAsync(CancellationToken.None);
-
-        Assert.Equal("First company", Assert.Single(firstCompanies).Name);
-        Assert.Equal("Second company", Assert.Single(secondCompanies).Name);
-    }
-
-    [Fact]
     public async Task CreatesOnePaymentVoucherInTheExplicitCompanyAndParsesMasterId()
     {
         const string response = """
@@ -189,40 +156,6 @@ public sealed class TallyClientTests
     }
 
     [Fact]
-    public async Task DiscoversOpenCompaniesThroughARealHttpRequest()
-    {
-        var response = await File.ReadAllTextAsync(Fixture("open-companies.xml"));
-        const string abcGstinResponse = """
-            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
-            <TAXUNIT NAME="GST Registration"><GSTREGNUMBER>33AEWPH4158J1Z3</GSTREGNUMBER></TAXUNIT>
-            </COLLECTION></DATA></BODY></ENVELOPE>
-            """;
-        const string xyzGstinResponse = """
-            <ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION>
-            <TAXUNIT NAME="Default Tax Unit"></TAXUNIT>
-            </COLLECTION></DATA></BODY></ENVELOPE>
-            """;
-        await using var server = new FakeTallyServer(response, abcGstinResponse, xyzGstinResponse);
-        using var client = CreateClient(server.Endpoint);
-
-        var companies = await client.GetOpenCompaniesAsync(CancellationToken.None);
-        var requests = await server.RequestBodies;
-
-        Assert.Collection(
-            companies,
-            company => Assert.Equal(
-                ("ABC Pvt Ltd", "abc-guid", "33AEWPH4158J1Z3"),
-                (company.Name, company.TallyGuid, company.Gstin)),
-            company => Assert.Equal(("XYZ & Co", "xyz-guid", null), (company.Name, company.TallyGuid, company.Gstin)));
-        Assert.Contains("<TYPE>Company</TYPE>", requests[0], StringComparison.Ordinal);
-        Assert.DoesNotContain("Company on Disk", requests[0], StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("<NATIVEMETHOD>GUID</NATIVEMETHOD>", requests[0], StringComparison.Ordinal);
-        Assert.Contains("<SVCURRENTCOMPANY>ABC Pvt Ltd</SVCURRENTCOMPANY>", requests[1], StringComparison.Ordinal);
-        Assert.Contains("<TYPE>Tax Unit</TYPE>", requests[1], StringComparison.Ordinal);
-        Assert.Contains("<SVCURRENTCOMPANY>XYZ &amp; Co</SVCURRENTCOMPANY>", requests[2], StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task RejectsXmlWithADocumentType()
     {
         const string response = """
@@ -233,7 +166,7 @@ public sealed class TallyClientTests
         using var client = CreateClient(server.Endpoint);
 
         var exception = await Assert.ThrowsAsync<TallyClientException>(() =>
-            client.GetOpenCompaniesAsync(CancellationToken.None));
+            client.CreateVoucherAsync(PaymentCommand(), CancellationToken.None));
 
         Assert.Equal(TallyErrorKind.InvalidResponse, exception.Kind);
     }
@@ -250,7 +183,7 @@ public sealed class TallyClientTests
         using var client = CreateClient(server.Endpoint);
 
         var exception = await Assert.ThrowsAsync<TallyClientException>(() =>
-            client.GetOpenCompaniesAsync(CancellationToken.None));
+            client.CreateVoucherAsync(PaymentCommand(), CancellationToken.None));
 
         Assert.Equal(TallyErrorKind.ApplicationError, exception.Kind);
         Assert.Contains("Unknown collection", exception.Message, StringComparison.Ordinal);
@@ -263,7 +196,7 @@ public sealed class TallyClientTests
         using var client = CreateClient(server.Endpoint);
 
         var exception = await Assert.ThrowsAsync<TallyClientException>(() =>
-            client.GetOpenCompaniesAsync(CancellationToken.None));
+            client.CreateVoucherAsync(PaymentCommand(), CancellationToken.None));
 
         Assert.Equal(TallyErrorKind.InvalidResponse, exception.Kind);
     }
@@ -282,7 +215,7 @@ public sealed class TallyClientTests
             });
 
         var exception = await Assert.ThrowsAsync<TallyClientException>(() =>
-            client.GetOpenCompaniesAsync(CancellationToken.None));
+            client.CreateVoucherAsync(PaymentCommand(), CancellationToken.None));
 
         Assert.Equal(TallyErrorKind.Timeout, exception.Kind);
     }
@@ -295,7 +228,7 @@ public sealed class TallyClientTests
         using var client = CreateClient(server.Endpoint, maxResponseBytes: 128);
 
         var exception = await Assert.ThrowsAsync<TallyClientException>(() =>
-            client.GetOpenCompaniesAsync(CancellationToken.None));
+            client.CreateVoucherAsync(PaymentCommand(), CancellationToken.None));
 
         Assert.Equal(TallyErrorKind.ResponseTooLarge, exception.Kind);
     }
@@ -314,7 +247,7 @@ public sealed class TallyClientTests
             });
 
         var exception = await Assert.ThrowsAsync<TallyClientException>(() =>
-            client.GetOpenCompaniesAsync(CancellationToken.None));
+            client.CreateVoucherAsync(PaymentCommand(), CancellationToken.None));
 
         Assert.Equal(TallyErrorKind.Timeout, exception.Kind);
     }
@@ -331,8 +264,8 @@ public sealed class TallyClientTests
             new TallyClientOptions());
 
         await Task.WhenAll(
-            client.GetOpenCompaniesAsync(CancellationToken.None),
-            client.GetOpenCompaniesAsync(CancellationToken.None));
+            client.CreateVoucherAsync(PaymentCommand(), CancellationToken.None),
+            client.CreateVoucherAsync(PaymentCommand(), CancellationToken.None));
 
         Assert.Equal(1, handler.MaximumConcurrency);
     }
@@ -348,7 +281,15 @@ public sealed class TallyClientTests
             MaxResponseBytes = maxResponseBytes,
         });
 
-    private static string Fixture(string name) => Path.Combine(AppContext.BaseDirectory, "Fixtures", name);
+    private static CreateVoucherCommand PaymentCommand() => new(
+        "d45f7537-00d5-4463-9d70-f246257d88ef",
+        "Nila",
+        new DateOnly(2026, 8, 19),
+        "Payment",
+        "NILA Playground Customer",
+        "Cash",
+        1.00m,
+        "Nila connector test");
 
     private const string VoucherBatchXml = """
         <ENVELOPE>
@@ -442,7 +383,7 @@ public sealed class TallyClientTests
     {
         StatusCode = System.Net.HttpStatusCode.OK,
         Content = new StringContent(
-            "<ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><COLLECTION /></DATA></BODY></ENVELOPE>"),
+            "<RESPONSE><CREATED>1</CREATED><ALTERED>0</ALTERED><ERRORS>0</ERRORS><LASTVCHID>42</LASTVCHID><LASTMID>0</LASTMID></RESPONSE>"),
     };
 
     private static class InterlockedExtensions

@@ -10,7 +10,7 @@ public sealed class VoucherFingerprintTests
     [Fact]
     public void MasterIdRequestUsesTheWorkingSingularTdlFilter()
     {
-        var xml = TallyRequests.VoucherFingerprint("Caltech", 42);
+        var xml = TallyRequests.VoucherFingerprint("Caltech", new DateOnly(2026, 6, 25), 42);
         var document = XDocument.Parse(xml);
 
         Assert.Contains(
@@ -22,6 +22,18 @@ public sealed class VoucherFingerprintTests
             element => element.Name.LocalName == "FILTERS");
         Assert.DoesNotContain("AllLedgerEntries.*", xml, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("$MasterID = 42", xml, StringComparison.Ordinal);
+        Assert.Equal(
+            ["20260625"],
+            document.Descendants("SVFROMDATE").Select(element => element.Value));
+        Assert.Equal(
+            ["Date"],
+            document.Descendants("SVFROMDATE").Select(element => element.Attribute("TYPE")?.Value));
+        Assert.Equal(
+            ["20260625"],
+            document.Descendants("SVTODATE").Select(element => element.Value));
+        Assert.Equal(
+            ["Date"],
+            document.Descendants("SVTODATE").Select(element => element.Attribute("TYPE")?.Value));
     }
 
     [Fact]

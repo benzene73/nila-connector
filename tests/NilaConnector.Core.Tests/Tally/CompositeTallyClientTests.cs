@@ -22,7 +22,7 @@ public sealed class CompositeTallyClientTests
             "test");
         var import = new ImportVouchersCommand("Nila", "<ENVELOPE />", 1);
 
-        Assert.Same(gateway.Companies, await client.GetOpenCompaniesAsync(CancellationToken.None));
+        Assert.Same(reader.Companies, await client.GetOpenCompaniesAsync(CancellationToken.None));
         Assert.Same(reader.Masters, await client.GetMastersAsync("Nila", CancellationToken.None));
         Assert.Same(
             reader.Vouchers,
@@ -33,11 +33,14 @@ public sealed class CompositeTallyClientTests
                 CancellationToken.None));
         Assert.Equal(
             reader.Fingerprint,
-            await client.GetVoucherFingerprintAsync("Nila", 1, CancellationToken.None));
+            await client.GetVoucherFingerprintAsync(
+                "Nila",
+                new DateOnly(2026, 8, 20),
+                1,
+                CancellationToken.None));
         Assert.Equal(gateway.CreateResult, await client.CreateVoucherAsync(create, CancellationToken.None));
         Assert.Equal(gateway.ImportResult, await client.ImportVouchersAsync(import, CancellationToken.None));
 
-        Assert.Equal(1, gateway.DiscoveryCalls);
         Assert.Equal(1, gateway.CreateCalls);
         Assert.Equal(1, gateway.ImportCalls);
         Assert.Equal(1, reader.MasterCalls);
@@ -71,18 +74,10 @@ public sealed class CompositeTallyClientTests
 
     private sealed class RecordingGatewayClient : ITallyGatewayClient
     {
-        public IReadOnlyList<TallyCompany> Companies { get; } = [new("Nila", "guid")];
         public TallyVoucherResult CreateResult { get; } = new(1, 0, 42);
         public TallyVoucherBatchResult ImportResult { get; } = new(1, 0, 0, 0, 0, 0, 42);
-        public int DiscoveryCalls { get; private set; }
         public int CreateCalls { get; private set; }
         public int ImportCalls { get; private set; }
-
-        public Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(CancellationToken cancellationToken)
-        {
-            DiscoveryCalls++;
-            return Task.FromResult(Companies);
-        }
 
         public Task<TallyVoucherResult> CreateVoucherAsync(
             CreateVoucherCommand command,
@@ -114,6 +109,8 @@ public sealed class CompositeTallyClientTests
                 new Dictionary<string, object?>()),
         ];
 
+        public IReadOnlyList<TallyCompany> Companies { get; } = [new("Nila", "guid")];
+
         public IReadOnlyList<TallySyncedVoucher> Vouchers { get; } =
         [
             new(
@@ -129,11 +126,19 @@ public sealed class CompositeTallyClientTests
         ];
 
         public int MasterCalls { get; private set; }
+        public int DiscoveryCalls { get; private set; }
         public int VoucherCalls { get; private set; }
         public int FingerprintCalls { get; private set; }
         public string? LastCompany { get; private set; }
         public VoucherSemanticFingerprint Fingerprint { get; } =
             new(new DateOnly(2026, 8, 20), "Payment", "1", new string('a', 64));
+
+        public Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(
+            CancellationToken cancellationToken)
+        {
+            DiscoveryCalls++;
+            return Task.FromResult(Companies);
+        }
 
         public Task<IReadOnlyList<TallyMaster>> GetMastersAsync(
             string company,
@@ -157,6 +162,7 @@ public sealed class CompositeTallyClientTests
 
         public Task<VoucherSemanticFingerprint?> GetVoucherFingerprintAsync(
             string company,
+            DateOnly voucherDate,
             long masterId,
             CancellationToken cancellationToken)
         {
@@ -173,10 +179,6 @@ public sealed class CompositeTallyClientTests
 
         public TaskCompletionSource<bool> ReleaseImport { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(
-            CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<TallyCompany>>([]);
 
         public Task<TallyVoucherResult> CreateVoucherAsync(
             CreateVoucherCommand command,

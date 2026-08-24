@@ -67,6 +67,7 @@ public sealed class JobRunnerTests
         Assert.Equal("tally-generated-guid", result.Details["tally_guid"]);
         Assert.Equal(0, client.ImportCalls);
         Assert.Equal(1, client.FingerprintCalls);
+        Assert.Equal(new DateOnly(2026, 6, 25), client.LastFingerprintDate);
     }
 
     [Fact]
@@ -263,6 +264,7 @@ public sealed class JobRunnerTests
 
         public Task<VoucherSemanticFingerprint?> GetVoucherFingerprintAsync(
             string company,
+            DateOnly voucherDate,
             long masterId,
             CancellationToken cancellationToken) => throw new NotImplementedException();
 
@@ -287,6 +289,7 @@ public sealed class JobRunnerTests
         public int VoucherReadCalls { get; private set; }
         public int FingerprintCalls { get; private set; }
         public int ImportCalls { get; private set; }
+        public DateOnly? LastFingerprintDate { get; private set; }
 
         public Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<TallyCompany>>([]);
@@ -311,10 +314,12 @@ public sealed class JobRunnerTests
 
         public Task<VoucherSemanticFingerprint?> GetVoucherFingerprintAsync(
             string company,
+            DateOnly voucherDate,
             long masterId,
             CancellationToken cancellationToken)
         {
             FingerprintCalls++;
+            LastFingerprintDate = voucherDate;
             return Task.FromResult(actualFingerprint);
         }
 

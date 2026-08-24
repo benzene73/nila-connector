@@ -4,8 +4,6 @@ namespace NilaConnector.Core.Tally;
 
 public interface ITallyGatewayClient
 {
-    Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(CancellationToken cancellationToken);
-
     Task<TallyVoucherResult> CreateVoucherAsync(
         CreateVoucherCommand command,
         CancellationToken cancellationToken);

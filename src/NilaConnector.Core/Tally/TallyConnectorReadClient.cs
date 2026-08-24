@@ -31,6 +31,37 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, IDisposable
         _service = new TallyPrimeService(_baseService);
     }
 
+    public async Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(
+        CancellationToken cancellationToken) =>
+        await ExecuteAsync(async token =>
+        {
+            var companies = await _service.GetCompaniesAsync(token);
+            var result = new List<TallyCompany>(companies.Count);
+
+            foreach (var company in companies)
+            {
+                var name = Clean(company.Name);
+                if (name is null)
+                {
+                    continue;
+                }
+
+                var request = new RequestOptions().SetCompany(name);
+                var registrations = await _service.GetObjectsAsync<GSTRegistration>(request, token);
+                result.Add(new TallyCompany(
+                    name,
+                    Clean(company.GUID),
+                    Clean(registrations.Select(registration => registration.GSTIN)
+                        .FirstOrDefault(gstin => !string.IsNullOrWhiteSpace(gstin)))));
+            }
+
+            return result
+                .DistinctBy(
+                    company => (company.Name.ToUpperInvariant(), company.TallyGuid?.ToUpperInvariant()))
+                .OrderBy(company => company.Name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }, cancellationToken);
+
     public async Task<IReadOnlyList<TallyMaster>> GetMastersAsync(
         string company,
         CancellationToken cancellationToken)
@@ -82,6 +113,7 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, IDisposable
 
     public async Task<VoucherSemanticFingerprint?> GetVoucherFingerprintAsync(
         string company,
+        DateOnly voucherDate,
         long masterId,
         CancellationToken cancellationToken)
     {
@@ -93,7 +125,7 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, IDisposable
             using var request = new HttpRequestMessage(HttpMethod.Post, _options.Endpoint)
             {
                 Content = new StringContent(
-                    TallyRequests.VoucherFingerprint(company, masterId),
+                    TallyRequests.VoucherFingerprint(company, voucherDate, masterId),
                     Encoding.UTF8,
                     "text/xml"),
             };

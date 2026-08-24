@@ -32,40 +32,6 @@ internal static class TallyResponseParser
         return new TallyVoucherResult(created, errors, lastVoucherId);
     }
 
-    public static async Task<IReadOnlyList<TallyCompany>> ParseOpenCompaniesAsync(
-        Stream response,
-        int maxCharacters,
-        CancellationToken cancellationToken)
-    {
-        var document = await LoadDocumentAsync(response, maxCharacters, cancellationToken);
-        ValidateApplicationStatus(document);
-
-        return document
-            .Descendants()
-            .Where(element => element.Name.LocalName.Equals("COMPANY", StringComparison.OrdinalIgnoreCase))
-            .Select(ParseCompany)
-            .Where(company => company is not null)
-            .Cast<TallyCompany>()
-            .DistinctBy(company => (company.Name, company.TallyGuid), CompanyIdentityComparer.Instance)
-            .OrderBy(company => company.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
-
-    public static async Task<string?> ParseCompanyGstinAsync(
-        Stream response,
-        int maxCharacters,
-        CancellationToken cancellationToken)
-    {
-        var document = await LoadDocumentAsync(response, maxCharacters, cancellationToken);
-        ValidateApplicationStatus(document);
-
-        return document
-            .Descendants()
-            .Where(element => element.Name.LocalName.Equals("GSTREGNUMBER", StringComparison.OrdinalIgnoreCase))
-            .Select(element => Normalize(element.Value))
-            .FirstOrDefault(value => value is not null);
-    }
-
     public static async Task<IReadOnlyDictionary<string, string>> ParseVoucherNumberingMethodsAsync(
         Stream response,
         int maxCharacters,
@@ -330,19 +296,6 @@ internal static class TallyResponseParser
         }
     }
 
-    private static TallyCompany? ParseCompany(XElement element)
-    {
-        var name = AttributeValue(element, "NAME") ?? DescendantValue(element, "NAME");
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return null;
-        }
-
-        var tallyGuid = AttributeValue(element, "GUID") ?? DescendantValue(element, "GUID");
-        var gstin = AttributeValue(element, "GSTIN") ?? DescendantValue(element, "GSTIN");
-        return new TallyCompany(name.Trim(), Normalize(tallyGuid), Normalize(gstin));
-    }
-
     private static void ValidateApplicationStatus(XDocument document)
     {
         var lineError = document
@@ -385,32 +338,9 @@ internal static class TallyResponseParser
         }
     }
 
-    private static string? AttributeValue(XElement element, string name) => element
-        .Attributes()
-        .FirstOrDefault(attribute => attribute.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase))
-        ?.Value;
-
-    private static string? DescendantValue(XElement element, string name) => element
-        .Descendants()
-        .FirstOrDefault(child => child.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase))
-        ?.Value;
-
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string Truncate(string value, int maxLength) =>
         value.Length <= maxLength ? value : value[..maxLength];
-
-    private sealed class CompanyIdentityComparer : IEqualityComparer<(string Name, string? TallyGuid)>
-    {
-        public static CompanyIdentityComparer Instance { get; } = new();
-
-        public bool Equals((string Name, string? TallyGuid) x, (string Name, string? TallyGuid) y) =>
-            StringComparer.OrdinalIgnoreCase.Equals(x.Name, y.Name) &&
-            StringComparer.OrdinalIgnoreCase.Equals(x.TallyGuid, y.TallyGuid);
-
-        public int GetHashCode((string Name, string? TallyGuid) value) => HashCode.Combine(
-            StringComparer.OrdinalIgnoreCase.GetHashCode(value.Name),
-            value.TallyGuid is null ? 0 : StringComparer.OrdinalIgnoreCase.GetHashCode(value.TallyGuid));
-    }
 
 }

@@ -36,61 +36,6 @@ internal static class TallyRequests
         return document.ToString(SaveOptions.DisableFormatting);
     }
 
-    public const string OpenCompanies = """
-        <ENVELOPE>
-          <HEADER>
-            <VERSION>1</VERSION>
-            <TALLYREQUEST>Export</TALLYREQUEST>
-            <TYPE>Collection</TYPE>
-            <ID>Nila Open Companies</ID>
-          </HEADER>
-          <BODY>
-            <DESC>
-              <STATICVARIABLES>
-                <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-              </STATICVARIABLES>
-              <TDL>
-                <TDLMESSAGE>
-                  <COLLECTION NAME="Nila Open Companies" ISINITIALIZE="Yes">
-                    <TYPE>Company</TYPE>
-                    <NATIVEMETHOD>Name</NATIVEMETHOD>
-                    <NATIVEMETHOD>GUID</NATIVEMETHOD>
-                    <COMPUTE>GSTIN : $GSTRegNumber:TaxUnit:($ExciseUnitName:Company:$Name)</COMPUTE>
-                  </COLLECTION>
-                </TDLMESSAGE>
-              </TDL>
-            </DESC>
-          </BODY>
-        </ENVELOPE>
-        """;
-
-    public static string CompanyGstRegistrations(string company)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(company);
-
-        return new XDocument(
-            new XElement("ENVELOPE",
-                new XElement("HEADER",
-                    new XElement("VERSION", "1"),
-                    new XElement("TALLYREQUEST", "Export"),
-                    new XElement("TYPE", "Collection"),
-                    new XElement("ID", "Nila GST Registrations")),
-                new XElement("BODY",
-                    new XElement("DESC",
-                        new XElement("STATICVARIABLES",
-                            new XElement("SVEXPORTFORMAT", "$$SysName:XML"),
-                            new XElement("SVCURRENTCOMPANY", company)),
-                        new XElement("TDL",
-                            new XElement("TDLMESSAGE",
-                                new XElement("COLLECTION",
-                                    new XAttribute("NAME", "Nila GST Registrations"),
-                                    new XAttribute("ISINITIALIZE", "Yes"),
-                                    new XElement("TYPE", "Tax Unit"),
-                                    new XElement("NATIVEMETHOD", "Name"),
-                                    new XElement("NATIVEMETHOD", "GSTRegNumber"))))))))
-            .ToString(SaveOptions.DisableFormatting);
-    }
-
     public static string VoucherNumberingMethods(string company)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(company);
@@ -118,7 +63,7 @@ internal static class TallyRequests
             .ToString(SaveOptions.DisableFormatting);
     }
 
-    public static string VoucherFingerprint(string company, long masterId)
+    public static string VoucherFingerprint(string company, DateOnly voucherDate, long masterId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(company);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(masterId);
@@ -134,7 +79,15 @@ internal static class TallyRequests
                     new XElement("DESC",
                         new XElement("STATICVARIABLES",
                             new XElement("SVEXPORTFORMAT", "$$SysName:XML"),
-                            new XElement("SVCURRENTCOMPANY", company)),
+                            new XElement("SVCURRENTCOMPANY", company),
+                            new XElement(
+                                "SVFROMDATE",
+                                new XAttribute("TYPE", "Date"),
+                                voucherDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture)),
+                            new XElement(
+                                "SVTODATE",
+                                new XAttribute("TYPE", "Date"),
+                                voucherDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture))),
                         new XElement("TDL",
                             new XElement("TDLMESSAGE",
                                 new XElement("COLLECTION",

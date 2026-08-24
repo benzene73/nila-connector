@@ -271,6 +271,7 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
 
         var actual = await tallyClient.GetVoucherFingerprintAsync(
             command.Company,
+            expected.Semantic.Date,
             candidate.MasterId.Value,
             cancellationToken);
 

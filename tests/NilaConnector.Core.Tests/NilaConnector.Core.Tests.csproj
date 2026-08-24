@@ -22,10 +22,4 @@
     <ProjectReference Include="..\..\src\NilaConnector.Core\NilaConnector.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Include="..\..\fixtures\tally-xml\*.xml"
-          Link="Fixtures\%(Filename)%(Extension)"
-          CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
 </Project>
