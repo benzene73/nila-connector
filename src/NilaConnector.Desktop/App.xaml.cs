@@ -134,7 +134,7 @@ public partial class App : System.Windows.Application, IDisposable
                 },
                 tallyOptions);
             var readClient = new TallyConnectorReadClient(tallyOptions);
-            return new CompositeTallyClient(gatewayClient, readClient);
+            return new CompositeTallyClient(gatewayClient, readClient, readClient);
         });
         builder.Services.AddHostedService<TallyMonitor>();
 

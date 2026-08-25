@@ -10,6 +10,10 @@ public interface ITallyReadDiagnostics
         string companyName,
         CancellationToken cancellationToken);
 
+    Task<TallyMasterQuery> GetMastersAsync(
+        TallyCompanyRef company,
+        CancellationToken cancellationToken);
+
     Task<TallyVoucherQuery> GetVouchersAsync(
         TallyCompanyRef company,
         DateRange period,
@@ -19,5 +23,16 @@ public interface ITallyReadDiagnostics
         TallyCompanyRef company,
         DateOnly voucherDate,
         long masterId,
+        CancellationToken cancellationToken);
+
+    Task<VoucherInspectionLookupResult> GetVoucherInspectionAsync(
+        TallyCompanyRef company,
+        DateOnly voucherDate,
+        long masterId,
+        CancellationToken cancellationToken);
+
+    Task<TallyGstIssueQuery> GetGstFieldIssuesAsync(
+        TallyCompanyRef company,
+        DateRange period,
         CancellationToken cancellationToken);
 }

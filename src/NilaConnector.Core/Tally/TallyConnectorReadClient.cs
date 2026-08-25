@@ -1,12 +1,17 @@
 using System.Globalization;
 using System.Text;
 using NilaConnector.Core.Models;
+using TallyConnector.Core.Exceptions;
 using TallyConnector.Core.Models.Request;
+using TallyConnector.Core.Models.Response;
+using TallyConnector.Models.Common;
 using TallyConnector.Models.TallyPrime.V7;
 using TallyConnector.Models.TallyPrime.V7.Masters;
 using TallyConnector.Models.TallyPrime.V7.Masters.Inventory;
 using TallyConnector.Services;
 using TallyConnector.Services.TallyPrime.V7;
+using MailingDetail = TallyConnector.Models.Base.Masters.MailingDetail;
+using TallyLedger = TallyConnector.Models.TallyPrime.V7.Masters.Ledger;
 
 namespace NilaConnector.Core.Tally;
 
@@ -14,7 +19,7 @@ namespace NilaConnector.Core.Tally;
 /// Adapts Accounting-Companion's typed Tally models to Nila's stable sync contract.
 /// Voucher writes deliberately remain in <see cref="TallyClient"/>.
 /// </summary>
-public sealed class TallyConnectorReadClient : ITallyReadClient, IDisposable
+public sealed class TallyConnectorReadClient : ITallyReadClient, ITallyMasterClient, IDisposable
 {
     private readonly TallyClientOptions _options;
     private readonly HttpClient _httpClient;
@@ -139,6 +144,92 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, IDisposable
         }, cancellationToken);
     }
 
+    public async Task<TallyMasterWriteResult> CreateLedgerAsync(
+        CreateLedgerCommand command,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        return await ExecuteAsync(async token =>
+        {
+            var responses = await _service.PostObjectsAsyncNew(
+                [BuildLedger(command)],
+                new PostRequestOptions
+                {
+                    Company = command.Company,
+                    StopatFirstError = true,
+                },
+                token);
+
+            return ParseLedgerResponse(command, responses);
+        }, cancellationToken);
+    }
+
+    internal static TallyMasterWriteResult ParseLedgerResponse(
+        CreateLedgerCommand command,
+        IReadOnlyList<PostResponse> responses)
+    {
+        if (responses.Count != 1)
+        {
+            throw new TallyClientException(
+                TallyErrorKind.InvalidResponse,
+                $"Tally returned {responses.Count} results after creating one ledger.");
+        }
+
+        var response = responses[0];
+        if (!string.IsNullOrWhiteSpace(response.Error))
+        {
+            throw new TallyClientException(
+                TallyErrorKind.ApplicationError,
+                $"Tally rejected ledger '{command.Name}': {response.Error.Trim()}");
+        }
+
+        if (!string.Equals(response.ObjectType, "Ledger", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(response.Name, command.Name, StringComparison.OrdinalIgnoreCase) ||
+            response.MasterId is null or 0 ||
+            response.MasterId > long.MaxValue)
+        {
+            throw new TallyClientException(
+                TallyErrorKind.InvalidResponse,
+                "Tally did not identify the ledger it created.");
+        }
+
+        return new TallyMasterWriteResult(
+            response.ObjectType,
+            response.Name!,
+            checked((long)response.MasterId.Value),
+            Clean(response.GUID),
+            Clean(response.RemoteId));
+    }
+
+    public async Task<VoucherInspection?> GetVoucherInspectionAsync(
+        string company,
+        DateOnly voucherDate,
+        long masterId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(company);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(masterId);
+
+        return await ExecuteAsync(async token =>
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, _options.Endpoint)
+            {
+                Content = new StringContent(
+                    TallyRequests.VoucherFingerprint(company, voucherDate, masterId),
+                    Encoding.UTF8,
+                    "text/xml"),
+            };
+            using var response = await _httpClient.SendAsync(request, token);
+            response.EnsureSuccessStatusCode();
+            await using var stream = await response.Content.ReadAsStreamAsync(token);
+            return await TallyResponseParser.ParseVoucherInspectionAsync(
+                stream,
+                _options.MaxResponseBytes,
+                token);
+        }, cancellationToken);
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -180,6 +271,13 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, IDisposable
                 $"Tally returned more than {_options.MaxResponseBytes} bytes.",
                 exception);
         }
+        catch (TallyConnectivityException exception)
+        {
+            throw new TallyClientException(
+                TallyErrorKind.Unreachable,
+                "Tally is not reachable.",
+                exception);
+        }
         catch (TallyClientException)
         {
             throw;
@@ -203,6 +301,51 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, IDisposable
         var baseUrl = $"{endpoint.Scheme}://{endpoint.Host}";
         _baseService.Setup(baseUrl, endpoint.Port);
     }
+
+    internal static TallyLedger BuildLedger(CreateLedgerCommand command)
+    {
+        var applicableFrom = command.ApplicableFrom.ToDateTime(TimeOnly.MinValue);
+
+        return new TallyLedger
+        {
+            Name = command.Name,
+            Group = command.Parent,
+            IsBillWise = true,
+            MailingDetails =
+            [
+                new MailingDetail
+                {
+                    ApplicableFrom = applicableFrom,
+                    MailingName = command.Name,
+                    Country = command.Country,
+                    State = command.State,
+                    AdressLines = [],
+                },
+            ],
+            GSTRegistrationDetails =
+            [
+                new LedgerGSTRegistrationDetail
+                {
+                    ApplicableFrom = applicableFrom,
+                    GSTRegistrationType = RegistrationType(command.RegistrationType),
+                    State = command.State,
+                    PlaceOfSupply = command.State,
+                    GSTIN = command.Gstin,
+                    IsOtherTerritoryAssesse = false,
+                    ConsiderPurchaseForExport = false,
+                    IsTransporter = false,
+                    IsCommonParty = false,
+                },
+            ],
+        };
+    }
+
+    private static GSTRegistrationType RegistrationType(string value) => value switch
+    {
+        "Regular" => GSTRegistrationType.Regular,
+        "Unregistered" => GSTRegistrationType.Unregistered,
+        _ => throw new InvalidDataException($"Unsupported GST registration type '{value}'."),
+    };
 
     private static TallyMaster MapLedger(Ledger ledger) =>
         Master(

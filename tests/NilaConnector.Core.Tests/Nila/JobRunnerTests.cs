@@ -274,6 +274,10 @@ public sealed class JobRunnerTests
             Task.FromException<TallyVoucherResult>(
                 new TallyClientException(kind, "Safe diagnostic message."));
 
+        public Task<TallyMasterWriteResult> CreateLedgerAsync(
+            CreateLedgerCommand command,
+            CancellationToken cancellationToken) => throw new NotImplementedException();
+
         public Task<TallyVoucherBatchResult> ImportVouchersAsync(
             ImportVouchersCommand command,
             CancellationToken cancellationToken) => throw new NotImplementedException();
@@ -326,6 +330,11 @@ public sealed class JobRunnerTests
         public Task<TallyVoucherResult> CreateVoucherAsync(
             CreateVoucherCommand command,
             CancellationToken cancellationToken) => throw new NotImplementedException();
+
+        public Task<TallyMasterWriteResult> CreateLedgerAsync(
+            CreateLedgerCommand command,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new TallyMasterWriteResult("Ledger", command.Name, 42, "guid", "remote-id"));
 
         public Task<TallyVoucherBatchResult> ImportVouchersAsync(
             ImportVouchersCommand command,

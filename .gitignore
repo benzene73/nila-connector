@@ -4,6 +4,7 @@
 **/obj/
 TestResults/
 artifacts/
+docs/investigations/
 *.pfx
 *.cer
 *.user

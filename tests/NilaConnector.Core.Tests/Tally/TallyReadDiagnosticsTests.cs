@@ -91,6 +91,57 @@ public sealed class TallyReadDiagnosticsTests
         Assert.Equal(2, conflict.Matches.Count);
     }
 
+    [Fact]
+    public async Task MasterQueryVerifiesCompanyAndReturnsContext()
+    {
+        var client = new FakeReadClient
+        {
+            Companies = [new("Caltech", "company-guid")],
+            Masters = [new("ledger", "guid:sales", "Sales", "sales-guid", "1", new Dictionary<string, object?>())],
+        };
+
+        var result = await Diagnostics(client).GetMastersAsync(
+            new TallyCompanyRef("caltech", "Caltech", "company-guid"),
+            CancellationToken.None);
+
+        Assert.Single(result.Masters);
+        Assert.Equal("company-guid", result.Context.CompanyGuid);
+        Assert.Equal("Master collection", result.Context.Query);
+    }
+
+    [Fact]
+    public async Task GstInspectionReportsEmptyCessValuationWithoutCallingItATallyMismatch()
+    {
+        var inspection = Inspection([
+            new VoucherLedgerInspection(
+                "Sales",
+                100m,
+                false,
+                false,
+                "Taxable",
+                "Goods",
+                "29141100",
+                "Formic Acid",
+                100m,
+                [new VoucherGstRateInspection("Cess", null, null)]),
+        ]);
+        var client = new FakeReadClient
+        {
+            Companies = [new("Caltech", "company-guid")],
+            Vouchers = [Voucher(118)],
+            Inspection = inspection,
+        };
+
+        var result = await Diagnostics(client).GetGstFieldIssuesAsync(
+            new TallyCompanyRef("Caltech", "company-guid"),
+            new DateRange(new DateOnly(2025, 12, 1), new DateOnly(2025, 12, 31)),
+            CancellationToken.None);
+
+        var issue = Assert.Single(result.Issues);
+        Assert.Equal("missing_cess_valuation", issue.Code);
+        Assert.DoesNotContain("mismatch", issue.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static TallyReadDiagnostics Diagnostics(FakeReadClient client) =>
         new(client, new TallyClientOptions { Endpoint = new Uri("http://127.0.0.1:9000/") });
 
@@ -106,11 +157,34 @@ public sealed class TallyReadDiagnosticsTests
             null,
             new Dictionary<string, object?>());
 
+    private static VoucherInspection Inspection(IReadOnlyList<VoucherLedgerInspection> ledgers) =>
+        new(
+            118,
+            "voucher-guid",
+            null,
+            new DateOnly(2025, 12, 4),
+            "Sales",
+            "118/2025-26",
+            "Siemens",
+            "Siemens",
+            null,
+            null,
+            null,
+            "Invoice Voucher View",
+            true,
+            null,
+            ledgers,
+            []);
+
     private sealed class FakeReadClient : ITallyReadClient
     {
         public IReadOnlyList<TallyCompany> Companies { get; init; } = [];
 
         public IReadOnlyList<TallySyncedVoucher> Vouchers { get; init; } = [];
+
+        public IReadOnlyList<TallyMaster> Masters { get; init; } = [];
+
+        public VoucherInspection? Inspection { get; init; }
 
         public int VoucherReads { get; private set; }
 
@@ -125,7 +199,7 @@ public sealed class TallyReadDiagnosticsTests
         public Task<IReadOnlyList<TallyMaster>> GetMastersAsync(
             string company,
             CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<TallyMaster>>([]);
+            Task.FromResult(Masters);
 
         public Task<IReadOnlyList<TallySyncedVoucher>> GetVouchersAsync(
             string company,
@@ -145,5 +219,12 @@ public sealed class TallyReadDiagnosticsTests
             long masterId,
             CancellationToken cancellationToken) =>
             Task.FromResult<VoucherSemanticFingerprint?>(null);
+
+        public Task<VoucherInspection?> GetVoucherInspectionAsync(
+            string company,
+            DateOnly voucherDate,
+            long masterId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Inspection);
     }
 }

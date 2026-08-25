@@ -7,4 +7,5 @@ public sealed record CreateLedgerCommand(
     string Gstin,
     string RegistrationType,
     string State,
-    string Country);
+    string Country,
+    DateOnly ApplicableFrom);

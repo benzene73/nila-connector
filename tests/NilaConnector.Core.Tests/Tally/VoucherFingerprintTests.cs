@@ -79,6 +79,25 @@ public sealed class VoucherFingerprintTests
         Assert.Equal(intendedFingerprint.CanonicalHash, readBackFingerprint.CanonicalHash);
     }
 
+    [Fact]
+    public void InspectionPreservesEmptyCessValuationRecords()
+    {
+        var voucher = XElement.Parse(VoucherXml);
+        voucher.AddFirst(new XElement("MASTERID", "42"));
+        var sales = voucher.Elements("LEDGERENTRIES.LIST")
+            .Single(entry => entry.Element("LEDGERNAME")?.Value == "Sales");
+        sales.Add(new XElement("RATEDETAILS.LIST",
+            new XElement("GSTRATEDUTYHEAD", "Cess")));
+
+        var inspection = VoucherInspectionBuilder.FromVoucher(voucher);
+
+        var cess = inspection.LedgerEntries
+            .Single(entry => entry.LedgerName == "Sales")
+            .Rates.Single(rate => rate.DutyHead == "Cess");
+        Assert.Null(cess.ValuationType);
+        Assert.Null(cess.Rate);
+    }
+
     private const string VoucherXml = """
         <VOUCHER>
           <DATE>20260625</DATE>

@@ -74,6 +74,18 @@ prints the resolved company GUID and effective period.
 ```powershell
 dotnet run --project src/NilaConnector.Diagnostics -- companies
 
+dotnet run --project src/NilaConnector.Diagnostics -- ledgers `
+  --company "Nila Demo"
+
+dotnet run --project src/NilaConnector.Diagnostics -- voucher-types `
+  --company "Nila Demo"
+
+dotnet run --project src/NilaConnector.Diagnostics -- stock-items `
+  --company "Nila Demo"
+
+dotnet run --project src/NilaConnector.Diagnostics -- numbering `
+  --company "Nila Demo"
+
 dotnet run --project src/NilaConnector.Diagnostics -- vouchers `
   --company "Nila Demo" --from 2025-12-01 --to 2025-12-31
 
@@ -82,12 +94,18 @@ dotnet run --project src/NilaConnector.Diagnostics -- voucher `
 
 dotnet run --project src/NilaConnector.Diagnostics -- export-voucher `
   --company "Nila Demo" --date 2025-12-04 --master-id 1
+
+dotnet run --project src/NilaConnector.Diagnostics -- gst-exceptions `
+  --company "Nila Demo" --from 2025-12-01 --to 2025-12-31
 ```
 
 The endpoint defaults to `http://127.0.0.1:9000/`. Override it with
 `--endpoint URL` or `NILA_TALLY_ENDPOINT`. The CLI exposes no write, import,
 alter, cancel, or delete command. `export-voucher` emits the connector's
-structured voucher JSON; it is not a raw XML escape hatch.
+structured voucher JSON, including GST rate and valuation records; it is not a
+raw XML escape hatch. `gst-exceptions` reports structural GST field omissions
+found by Nila. Classification mismatches still require confirmation in Tally's
+native GST report.
 
 ## Windows installer
 

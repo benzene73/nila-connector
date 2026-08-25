@@ -10,7 +10,7 @@ public sealed class CompositeTallyClientTests
     {
         var gateway = new RecordingGatewayClient();
         var reader = new RecordingReadClient();
-        using var client = new CompositeTallyClient(gateway, reader);
+        using var client = new CompositeTallyClient(gateway, reader, reader);
         var create = new CreateVoucherCommand(
             "job-1",
             "Nila",
@@ -21,6 +21,15 @@ public sealed class CompositeTallyClientTests
             1m,
             "test");
         var import = new ImportVouchersCommand("Nila", "<ENVELOPE />", 1);
+        var ledger = new CreateLedgerCommand(
+            "Nila",
+            "Customer",
+            "Sundry Debtors",
+            "29AAVCS8021P1ZB",
+            "Regular",
+            "Karnataka",
+            "India",
+            new DateOnly(2026, 7, 15));
 
         Assert.Same(reader.Companies, await client.GetOpenCompaniesAsync(CancellationToken.None));
         Assert.Same(reader.Masters, await client.GetMastersAsync("Nila", CancellationToken.None));
@@ -39,6 +48,7 @@ public sealed class CompositeTallyClientTests
                 1,
                 CancellationToken.None));
         Assert.Equal(gateway.CreateResult, await client.CreateVoucherAsync(create, CancellationToken.None));
+        Assert.Equal(reader.LedgerResult, await client.CreateLedgerAsync(ledger, CancellationToken.None));
         Assert.Equal(gateway.ImportResult, await client.ImportVouchersAsync(import, CancellationToken.None));
 
         Assert.Equal(1, gateway.CreateCalls);
@@ -46,6 +56,7 @@ public sealed class CompositeTallyClientTests
         Assert.Equal(1, reader.MasterCalls);
         Assert.Equal(1, reader.VoucherCalls);
         Assert.Equal(1, reader.FingerprintCalls);
+        Assert.Equal(1, reader.LedgerCreateCalls);
         Assert.Equal("Nila", reader.LastCompany);
     }
 
@@ -54,7 +65,7 @@ public sealed class CompositeTallyClientTests
     {
         var gateway = new BlockingGatewayClient();
         var reader = new RecordingReadClient();
-        using var client = new CompositeTallyClient(gateway, reader);
+        using var client = new CompositeTallyClient(gateway, reader, reader);
         var command = new ImportVouchersCommand("Nila", "<ENVELOPE />", 1);
 
         var importTask = client.ImportVouchersAsync(command, CancellationToken.None);
@@ -96,7 +107,7 @@ public sealed class CompositeTallyClientTests
         }
     }
 
-    private sealed class RecordingReadClient : ITallyReadClient
+    private sealed class RecordingReadClient : ITallyReadClient, ITallyMasterClient
     {
         public IReadOnlyList<TallyMaster> Masters { get; } =
         [
@@ -129,9 +140,20 @@ public sealed class CompositeTallyClientTests
         public int DiscoveryCalls { get; private set; }
         public int VoucherCalls { get; private set; }
         public int FingerprintCalls { get; private set; }
+        public int LedgerCreateCalls { get; private set; }
         public string? LastCompany { get; private set; }
         public VoucherSemanticFingerprint Fingerprint { get; } =
             new(new DateOnly(2026, 8, 20), "Payment", "1", new string('a', 64));
+        public TallyMasterWriteResult LedgerResult { get; } =
+            new("Ledger", "Customer", 42, "guid", "remote-id");
+
+        public Task<TallyMasterWriteResult> CreateLedgerAsync(
+            CreateLedgerCommand command,
+            CancellationToken cancellationToken)
+        {
+            LedgerCreateCalls++;
+            return Task.FromResult(LedgerResult);
+        }
 
         public Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(
             CancellationToken cancellationToken)
@@ -170,6 +192,13 @@ public sealed class CompositeTallyClientTests
             LastCompany = company;
             return Task.FromResult<VoucherSemanticFingerprint?>(Fingerprint);
         }
+
+        public Task<VoucherInspection?> GetVoucherInspectionAsync(
+            string company,
+            DateOnly voucherDate,
+            long masterId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<VoucherInspection?>(null);
     }
 
     private sealed class BlockingGatewayClient : ITallyGatewayClient

@@ -42,40 +42,6 @@ public sealed class TallyClientTests
     }
 
     [Fact]
-    public async Task CreatesARegisteredPartyLedgerInTheExplicitCompany()
-    {
-        const string response = """
-            <RESPONSE>
-              <CREATED>1</CREATED><ALTERED>0</ALTERED><COMBINED>0</COMBINED>
-              <IGNORED>0</IGNORED><ERRORS>0</ERRORS><EXCEPTIONS>0</EXCEPTIONS>
-              <LASTMID>42</LASTMID>
-            </RESPONSE>
-            """;
-        await using var server = new FakeTallyServer(response);
-        using var client = CreateClient(server.Endpoint);
-
-        var result = await client.CreateLedgerAsync(
-            new CreateLedgerCommand(
-                "Nila & Co",
-                "Customer & Co",
-                "Sundry Debtors",
-                "29AAVCS8021P1ZB",
-                "Regular",
-                "Karnataka",
-                "India"),
-            CancellationToken.None);
-        var request = await server.RequestBody;
-
-        Assert.Equal(1, result.Created);
-        Assert.Contains("<ID>All Masters</ID>", request, StringComparison.Ordinal);
-        Assert.Contains("<SVCURRENTCOMPANY>Nila &amp; Co</SVCURRENTCOMPANY>", request, StringComparison.Ordinal);
-        Assert.Contains("<LEDGER NAME=\"Customer &amp; Co\" ACTION=\"Create\">", request, StringComparison.Ordinal);
-        Assert.Contains("<PARENT>Sundry Debtors</PARENT>", request, StringComparison.Ordinal);
-        Assert.Contains("<PARTYGSTIN>29AAVCS8021P1ZB</PARTYGSTIN>", request, StringComparison.Ordinal);
-        Assert.Contains("<STATENAME>Karnataka</STATENAME>", request, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task RejectsAnAmbiguousVoucherImportResponse()
     {
         const string response = """

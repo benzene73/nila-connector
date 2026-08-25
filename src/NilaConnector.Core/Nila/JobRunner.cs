@@ -454,6 +454,16 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
             throw new InvalidDataException("The party ledger payload is invalid.");
         }
 
+        if (!DateOnly.TryParseExact(
+                RequiredString(ledger, "applicable_from"),
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var applicableFrom))
+        {
+            throw new InvalidDataException("The party ledger applicable_from is invalid.");
+        }
+
         return new CreateLedgerCommand(
             company,
             BoundedString(ledger, "name", 200),
@@ -461,7 +471,8 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
             BoundedString(ledger, "gstin", 15).ToUpperInvariant(),
             BoundedString(ledger, "registration_type", 40),
             BoundedString(ledger, "state", 100),
-            BoundedString(ledger, "country", 100));
+            BoundedString(ledger, "country", 100),
+            applicableFrom);
     }
 
     private static int RequiredPositiveInt(JsonElement element, string property)

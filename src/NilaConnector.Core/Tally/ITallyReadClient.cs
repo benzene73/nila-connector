@@ -21,4 +21,10 @@ public interface ITallyReadClient
         DateOnly voucherDate,
         long masterId,
         CancellationToken cancellationToken);
+
+    Task<VoucherInspection?> GetVoucherInspectionAsync(
+        string company,
+        DateOnly voucherDate,
+        long masterId,
+        CancellationToken cancellationToken);
 }

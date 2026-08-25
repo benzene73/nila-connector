@@ -26,10 +26,9 @@ public interface ITallyClient
         CreateVoucherCommand command,
         CancellationToken cancellationToken);
 
-    Task<TallyVoucherBatchResult> CreateLedgerAsync(
+    Task<TallyMasterWriteResult> CreateLedgerAsync(
         CreateLedgerCommand command,
-        CancellationToken cancellationToken) =>
-        Task.FromException<TallyVoucherBatchResult>(new NotSupportedException());
+        CancellationToken cancellationToken);
 
     Task<TallyVoucherBatchResult> ImportVouchersAsync(
         ImportVouchersCommand command,

@@ -88,19 +88,31 @@ internal static class TallyResponseParser
         var document = await LoadDocumentAsync(response, maxCharacters, cancellationToken);
         ValidateApplicationStatus(document);
 
-        var vouchers = document.Descendants()
-            .Where(element => element.Name.LocalName.Equals(
-                "VOUCHER",
-                StringComparison.OrdinalIgnoreCase) &&
-                element.Elements().Any(child => child.Name.LocalName.Equals(
-                    "MASTERID",
-                    StringComparison.OrdinalIgnoreCase)))
-            .ToArray();
+        var vouchers = MaterialVouchers(document);
 
         return vouchers.Length switch
         {
             0 => null,
             1 => VoucherSemanticFingerprintBuilder.FromVoucher(vouchers[0]),
+            _ => throw new TallyClientException(
+                TallyErrorKind.InvalidResponse,
+                "Tally returned multiple vouchers for one MasterID."),
+        };
+    }
+
+    public static async Task<VoucherInspection?> ParseVoucherInspectionAsync(
+        Stream response,
+        int maxCharacters,
+        CancellationToken cancellationToken)
+    {
+        var document = await LoadDocumentAsync(response, maxCharacters, cancellationToken);
+        ValidateApplicationStatus(document);
+        var vouchers = MaterialVouchers(document);
+
+        return vouchers.Length switch
+        {
+            0 => null,
+            1 => VoucherInspectionBuilder.FromVoucher(vouchers[0]),
             _ => throw new TallyClientException(
                 TallyErrorKind.InvalidResponse,
                 "Tally returned multiple vouchers for one MasterID."),
@@ -339,6 +351,16 @@ internal static class TallyResponseParser
     }
 
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static XElement[] MaterialVouchers(XDocument document) =>
+        document.Descendants()
+            .Where(element => element.Name.LocalName.Equals(
+                "VOUCHER",
+                StringComparison.OrdinalIgnoreCase) &&
+                element.Elements().Any(child => child.Name.LocalName.Equals(
+                    "MASTERID",
+                    StringComparison.OrdinalIgnoreCase)))
+            .ToArray();
 
     private static string Truncate(string value, int maxLength) =>
         value.Length <= maxLength ? value : value[..maxLength];

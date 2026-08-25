@@ -6,13 +6,18 @@ public sealed class CompositeTallyClient : ITallyClient, IDisposable
 {
     private readonly ITallyGatewayClient _gatewayClient;
     private readonly ITallyReadClient _readClient;
+    private readonly ITallyMasterClient _masterClient;
     private readonly SemaphoreSlim _requestLock = new(1, 1);
     private bool _disposed;
 
-    public CompositeTallyClient(ITallyGatewayClient gatewayClient, ITallyReadClient readClient)
+    public CompositeTallyClient(
+        ITallyGatewayClient gatewayClient,
+        ITallyReadClient readClient,
+        ITallyMasterClient masterClient)
     {
         _gatewayClient = gatewayClient ?? throw new ArgumentNullException(nameof(gatewayClient));
         _readClient = readClient ?? throw new ArgumentNullException(nameof(readClient));
+        _masterClient = masterClient ?? throw new ArgumentNullException(nameof(masterClient));
     }
 
     public Task<IReadOnlyList<TallyCompany>> GetOpenCompaniesAsync(CancellationToken cancellationToken) =>
@@ -50,10 +55,10 @@ public sealed class CompositeTallyClient : ITallyClient, IDisposable
         CancellationToken cancellationToken) =>
         ExecuteAsync(() => _gatewayClient.CreateVoucherAsync(command, cancellationToken), cancellationToken);
 
-    public Task<TallyVoucherBatchResult> CreateLedgerAsync(
+    public Task<TallyMasterWriteResult> CreateLedgerAsync(
         CreateLedgerCommand command,
         CancellationToken cancellationToken) =>
-        ExecuteAsync(() => _gatewayClient.CreateLedgerAsync(command, cancellationToken), cancellationToken);
+        ExecuteAsync(() => _masterClient.CreateLedgerAsync(command, cancellationToken), cancellationToken);
 
     public Task<TallyVoucherBatchResult> ImportVouchersAsync(
         ImportVouchersCommand command,

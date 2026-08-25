@@ -83,7 +83,7 @@ internal sealed class FakeTallyServer : IAsyncDisposable
             await stream.WriteAsync(responseHeaders, cancellationToken);
             await stream.WriteAsync(responseBytes, cancellationToken);
             await stream.FlushAsync(cancellationToken);
-            requests.Add(Encoding.UTF8.GetString(body.ToArray()));
+            requests.Add(DecodeBody(headers, body.ToArray()));
         }
 
         return requests;
@@ -141,5 +141,16 @@ internal sealed class FakeTallyServer : IAsyncDisposable
         return line is not null && int.TryParse(line["Content-Length:".Length..].Trim(), out var length)
             ? length
             : 0;
+    }
+
+    private static string DecodeBody(string headers, byte[] body)
+    {
+        if (headers.Contains("charset=utf-16", StringComparison.OrdinalIgnoreCase) ||
+            headers.Contains("charset=\"utf-16\"", StringComparison.OrdinalIgnoreCase))
+        {
+            return Encoding.Unicode.GetString(body);
+        }
+
+        return Encoding.UTF8.GetString(body);
     }
 }
