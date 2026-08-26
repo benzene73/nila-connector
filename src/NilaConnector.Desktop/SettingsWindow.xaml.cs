@@ -10,14 +10,17 @@ public partial class SettingsWindow : Window
 {
     private readonly Func<Task> _unlinkAsync;
     private readonly TallyConnectionSettingsStore _tallySettings;
+    private readonly string _logDirectory;
 
     public SettingsWindow(
         bool isLinked,
         TallyConnectionSettingsStore tallySettings,
+        string logDirectory,
         Func<Task> unlinkAsync)
     {
         InitializeComponent();
         _tallySettings = tallySettings;
+        _logDirectory = logDirectory;
         _unlinkAsync = unlinkAsync;
         TallyHostTextBox.Text = tallySettings.Host;
         TallyPortTextBox.Text = tallySettings.Port.ToString(CultureInfo.InvariantCulture);
@@ -57,13 +60,8 @@ public partial class SettingsWindow : Window
 
     private void OpenLogs_Click(object sender, RoutedEventArgs e)
     {
-        var path = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Nila",
-            "Connector",
-            "logs");
-        _ = Directory.CreateDirectory(path);
-        _ = Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true });
+        _ = Directory.CreateDirectory(_logDirectory);
+        _ = Process.Start(new ProcessStartInfo("explorer.exe", _logDirectory) { UseShellExecute = true });
     }
 
     private async void Unlink_Click(object sender, RoutedEventArgs e)

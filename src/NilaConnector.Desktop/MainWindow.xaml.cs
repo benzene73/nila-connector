@@ -13,17 +13,20 @@ public partial class MainWindow : Window
     private readonly MachineLinker _machineLinker;
     private readonly ILogger<MainWindow> _logger;
     private readonly TallyConnectionSettingsStore _tallySettings;
+    private readonly ConnectorDataPaths _dataPaths;
 
     public MainWindow(
         MainWindowViewModel viewModel,
         MachineLinker machineLinker,
         TallyConnectionSettingsStore tallySettings,
+        ConnectorDataPaths dataPaths,
         ILogger<MainWindow> logger)
     {
         InitializeComponent();
         _viewModel = viewModel;
         _machineLinker = machineLinker;
         _tallySettings = tallySettings;
+        _dataPaths = dataPaths;
         _logger = logger;
         DataContext = viewModel;
     }
@@ -52,6 +55,7 @@ public partial class MainWindow : Window
         var settingsWindow = new SettingsWindow(
             _viewModel.IsLinked,
             _tallySettings,
+            _dataPaths.LogDirectory,
             UnlinkFromSettingsAsync)
         {
             Owner = this,

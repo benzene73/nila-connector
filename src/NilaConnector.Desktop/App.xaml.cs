@@ -110,19 +110,19 @@ public partial class App : System.Windows.Application, IDisposable
     private static IHost BuildHost()
     {
         var builder = Host.CreateApplicationBuilder();
-        var logDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Nila",
-            "Connector",
-            "logs");
+        var dataPaths = ConnectorDataPaths.FromEnvironment();
 
         builder.Logging.ClearProviders();
         builder.Logging.SetMinimumLevel(LogLevel.Information);
-        builder.Logging.AddProvider(new JsonLineFileLoggerProvider(logDirectory));
+        builder.Logging.AddProvider(new JsonLineFileLoggerProvider(dataPaths.LogDirectory));
 
         var tallyOptions = new TallyClientOptions();
+        builder.Services.AddSingleton(dataPaths);
         builder.Services.AddSingleton(tallyOptions);
-        builder.Services.AddSingleton<TallyConnectionSettingsStore>();
+        builder.Services.AddSingleton(services => new TallyConnectionSettingsStore(
+            tallyOptions,
+            services.GetRequiredService<ILogger<TallyConnectionSettingsStore>>(),
+            dataPaths.TallySettingsPath));
         builder.Services.AddSingleton<ConnectorStateStore>();
         builder.Services.AddSingleton<ITallyClient>(services =>
         {
@@ -143,7 +143,9 @@ public partial class App : System.Windows.Application, IDisposable
             ConnectorVersion = AppVersion.Current,
         });
         builder.Services.AddSingleton(BuildPairingOptions());
-        builder.Services.AddSingleton<DpapiDeviceCredentialStore>();
+        builder.Services.AddSingleton(services => new DpapiDeviceCredentialStore(
+            services.GetRequiredService<ILogger<DpapiDeviceCredentialStore>>(),
+            dataPaths.CredentialPath));
         builder.Services.AddSingleton<IDeviceCredentialStore>(services =>
             services.GetRequiredService<DpapiDeviceCredentialStore>());
         builder.Services.AddSingleton<IExternalBrowser, WindowsExternalBrowser>();

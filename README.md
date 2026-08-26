@@ -40,11 +40,18 @@ dotnet run --project src/NilaConnector.Desktop
 ```
 
 TallyPrime defaults to `http://127.0.0.1:9000`. Installed builds connect to
-`https://nila.tax`; local development can override Nila before launch:
+`https://nila.tax`. To run the current source against local Nila:
 
 ```powershell
-$env:NILA_BASE_URL = "http://127.0.0.1:4000"
+./scripts/run-local.ps1
 ```
+
+The launcher passes the local URL only to its child process and stores the local
+device credential, Tally settings, and logs under
+`%LOCALAPPDATA%\Nila\Connector.Local`. Production state under
+`%LOCALAPPDATA%\Nila\Connector` is not changed. Quit any running installed
+connector before using the local launcher because only one connector instance
+may run at a time.
 
 Start both local services, launch the connector, then choose
 **Link to Nila**. The connector opens an expiring approval page in the browser;
@@ -62,8 +69,9 @@ $env:NILA_DEVICE_TOKEN = "the-one-time-device-token"
 Plain `ws://` is accepted only for loopback development; remote deployments
 must use `wss://`. The connector never stores the user's Nila password.
 
-Logs are written as JSON Lines under
-`%LOCALAPPDATA%\Nila\Connector\logs`.
+Production logs are written as JSON Lines under
+`%LOCALAPPDATA%\Nila\Connector\logs`; the local launcher uses
+`%LOCALAPPDATA%\Nila\Connector.Local\logs`.
 
 ## Read-only Tally diagnostics
 
