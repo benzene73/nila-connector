@@ -75,19 +75,26 @@ attribute and an inner `NAME` element were supplied.
 that every alternative shape fails, so do not describe the inner element as an
 absolute protocol requirement without an isolated negative test.
 
-### Voucher identity behavior is not yet fully understood
+### `REMOTEALTGUID` persists across Tally-assigned voucher identity
 
-Sending the same create request twice produced `CREATED=1` followed by
-`ALTERED=1`, rather than a duplicate. However, a subsequent export showed a
-Tally-generated `REMOTEID` instead of the value originally supplied by the
-test. Deletion using the supplied value missed a remaining voucher; deletion
-using Tally's exported `REMOTEID` succeeded.
+An earlier experiment that supplied `REMOTEID` and `GUID` produced
+`CREATED=1` followed by `ALTERED=1`, but a subsequent export showed a
+Tally-generated `REMOTEID`. That experiment did not establish a durable
+caller-owned identity.
 
-**Consequence:** do not claim that `REMOTEID` alone guarantees idempotency. The
-match may involve `GUID`, voucher type/number/date, or another internal key.
-Until this is isolated, Nila must use its own durable operation ID, preflight
-known failures, classify ambiguous transport outcomes as unknown, and reconcile
-before retrying.
+A later Payment/Receipt experiment omitted `VOUCHERNUMBER`, `GUID`, and
+`REMOTEID`, and supplied a UUID-shaped `REMOTEALTGUID` child element instead.
+Tally assigned its own voucher number, GUID, and MasterID while preserving the
+supplied `REMOTEALTGUID`. The value remained queryable after creation and was
+returned by TallyConnector's misleadingly named `Voucher.RemoteId` property,
+which is serialized from the `REMOTEALTGUID` element.
+
+**Consequence:** for Tally-numbered accounting vouchers, Nila uses a
+deterministic `REMOTEALTGUID` as its correlation identity and leaves voucher
+number, GUID, and MasterID to Tally. The connector preflights and reads back by
+that value, then compares a semantic fingerprint before treating the voucher as
+equivalent. `REFERENCE` remains a bank/business reference and is not used as
+the accounting identity.
 
 ## Current design rules
 
@@ -100,18 +107,17 @@ before retrying.
 6. Never blindly retry an unknown voucher creation.
 7. Preserve the raw Tally line error in diagnostics, but present a concise,
    actionable message to the user.
+8. For Tally-numbered vouchers, correlate with `REMOTEALTGUID`, then verify the
+   material voucher contents before accepting a retry or read-back.
 
 ## Open experiments
 
 These are intentionally unresolved:
 
-- Determine the exact matching precedence among `REMOTEID`, `GUID`, voucher
-  type, voucher number, date, and Tally `MASTERID`.
-- Repeat identity tests with otherwise identical vouchers that vary exactly one
-  candidate identity field at a time.
+- Establish whether caller-supplied `REMOTEID` has any safe use distinct from
+  `REMOTEALTGUID`; do not use it for Nila voucher correlation meanwhile.
 - Capture the TallyPrime release/build in every future live-test fixture.
 - Establish which useful GST identity fields, if any, are available from an
   unloaded `Company on Disk` object across supported TallyPrime versions.
 - Convert stable findings into fake-server fixtures and narrowly scoped live
   smoke tests; do not make the normal unit test suite depend on a running Tally.
-
