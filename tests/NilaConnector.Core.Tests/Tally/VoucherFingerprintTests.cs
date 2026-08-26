@@ -80,6 +80,39 @@ public sealed class VoucherFingerprintTests
     }
 
     [Fact]
+    public void FingerprintIgnoresDescriptionWhitespaceDiscardedByTally()
+    {
+        var intended = XElement.Parse(VoucherXml.Replace(
+            "Medical equipment",
+            "Medical equipment\nContract period: 2026",
+            StringComparison.Ordinal));
+        var readBack = XElement.Parse(VoucherXml.Replace(
+            "Medical equipment",
+            "Medical equipmentContract period: 2026",
+            StringComparison.Ordinal));
+
+        var intendedFingerprint = VoucherSemanticFingerprintBuilder.FromVoucher(intended);
+        var readBackFingerprint = VoucherSemanticFingerprintBuilder.FromVoucher(readBack);
+
+        Assert.Equal(intendedFingerprint.CanonicalHash, readBackFingerprint.CanonicalHash);
+    }
+
+    [Fact]
+    public void FingerprintStillDetectsMaterialDescriptionChanges()
+    {
+        var original = XElement.Parse(VoucherXml);
+        var changed = XElement.Parse(VoucherXml.Replace(
+            "Medical equipment",
+            "Different service",
+            StringComparison.Ordinal));
+
+        var originalFingerprint = VoucherSemanticFingerprintBuilder.FromVoucher(original);
+        var changedFingerprint = VoucherSemanticFingerprintBuilder.FromVoucher(changed);
+
+        Assert.NotEqual(originalFingerprint.CanonicalHash, changedFingerprint.CanonicalHash);
+    }
+
+    [Fact]
     public void InspectionPreservesEmptyCessValuationRecords()
     {
         var voucher = XElement.Parse(VoucherXml);

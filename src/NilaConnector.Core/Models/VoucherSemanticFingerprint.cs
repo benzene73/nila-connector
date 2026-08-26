@@ -75,7 +75,7 @@ internal static class VoucherSemanticFingerprintBuilder
             ["gst_taxability"] = Text(DirectValue(entry, "GSTOVRDNTAXABILITY")),
             ["gst_supply_type"] = Text(DirectValue(entry, "GSTOVRDNTYPEOFSUPPLY")),
             ["hsn_sac"] = Text(DirectValue(entry, "GSTHSNNAME")),
-            ["description"] = Text(DirectValue(entry, "GSTHSNDESCRIPTION")),
+            ["description"] = Description(DirectValue(entry, "GSTHSNDESCRIPTION")),
             ["assessable_value"] = Number(DirectValue(entry, "GSTOVRDNASSESSABLEVALUE")),
             ["rates"] = entry.Elements()
                 .Where(element => NameIs(element, "RATEDETAILS.LIST"))
@@ -98,7 +98,7 @@ internal static class VoucherSemanticFingerprintBuilder
             ["actual_quantity"] = Text(DirectValue(entry, "ACTUALQTY")),
             ["billed_quantity"] = Text(DirectValue(entry, "BILLEDQTY")),
             ["rate"] = Text(DirectValue(entry, "RATE")),
-            ["description"] = Text(entry.Descendants()
+            ["description"] = Description(entry.Descendants()
                 .FirstOrDefault(element => NameIs(element, "BASICUSERDESCRIPTION"))?.Value),
         };
 
@@ -137,6 +137,15 @@ internal static class VoucherSemanticFingerprintBuilder
 
     private static string? Text(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
+
+    // Tally does not preserve whitespace boundaries inside free-form descriptions.
+    // Ignore formatting whitespace here while keeping every non-whitespace character
+    // material to duplicate/conflict detection.
+    private static string? Description(string? value)
+    {
+        var text = Text(value);
+        return text is null ? null : string.Concat(text.Where(character => !char.IsWhiteSpace(character)));
+    }
 
     private static string? Boolean(string? value) => Text(value) switch
     {
