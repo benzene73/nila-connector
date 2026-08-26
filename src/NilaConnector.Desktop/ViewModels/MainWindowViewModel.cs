@@ -186,7 +186,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
 public sealed class CompanyItemViewModel : INotifyPropertyChanged
 {
-    private string _status = "Ready";
     private string _masters = "Not synced";
     private string _vouchers = "Not synced";
     private string? _error;
@@ -197,7 +196,6 @@ public sealed class CompanyItemViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public TallyCompany Company { get; }
     public string Name => Company.Name;
-    public string Status => _status;
     public string Masters => _masters;
     public string Vouchers => _vouchers;
     public string? Error => _error;
@@ -206,7 +204,6 @@ public sealed class CompanyItemViewModel : INotifyPropertyChanged
 
     public void Update(CompanySyncProgress progress)
     {
-        _status = progress.Status;
         _masters = progress.Masters;
         _vouchers = progress.Vouchers;
         _error = progress.Error;
