@@ -14,13 +14,15 @@ internal static class TallyRequestValidator
     }
 
     public static VoucherImportFingerprint ReadSingleVoucherFingerprint(
-        ImportVouchersCommand command) =>
-        ReadSingleVoucherFingerprint(command, requireSingleVoucher: true)
+        ImportVouchersCommand command,
+        VoucherNumberMode numberMode = VoucherNumberMode.Source) =>
+        ReadSingleVoucherFingerprint(command, requireSingleVoucher: true, numberMode)
         ?? throw new InvalidDataException("The voucher import must contain exactly one voucher for recovery.");
 
     private static VoucherImportFingerprint? ReadSingleVoucherFingerprint(
         ImportVouchersCommand command,
-        bool requireSingleVoucher)
+        bool requireSingleVoucher,
+        VoucherNumberMode numberMode = VoucherNumberMode.Source)
     {
         if (command.Xml.Length == 0 || command.Xml.Length > MaxRequestCharacters)
         {
@@ -69,9 +71,16 @@ internal static class TallyRequestValidator
         }
 
         var voucher = Elements(messages[0], "VOUCHER").Single();
-        var correlationId = RequireVoucherValue(voucher, "GUID", 200);
-        var semantic = VoucherSemanticFingerprintBuilder.FromVoucher(voucher);
-        return new VoucherImportFingerprint(correlationId, semantic);
+        var correlationId = numberMode switch
+        {
+            VoucherNumberMode.Source => RequireVoucherValue(voucher, "GUID", 200),
+            VoucherNumberMode.Tally => RequireDirectVoucherValue(voucher, "REMOTEALTGUID", 100),
+            _ => throw new InvalidDataException("The voucher number mode is invalid."),
+        };
+        var semantic = VoucherSemanticFingerprintBuilder.FromVoucher(
+            voucher,
+            requireVoucherNumber: numberMode == VoucherNumberMode.Source);
+        return new VoucherImportFingerprint(numberMode, correlationId, semantic);
     }
 
     private static void RequireSingleValue(XContainer document, string name, string expected)
@@ -97,13 +106,38 @@ internal static class TallyRequestValidator
 
         return values[0];
     }
+
+    private static string RequireDirectVoucherValue(
+        XElement voucher,
+        string name,
+        int maximumLength)
+    {
+        var values = voucher.Elements()
+            .Where(value => value.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase))
+            .Select(value => value.Value.Trim())
+            .ToArray();
+
+        if (values.Length != 1 || values[0].Length == 0 || values[0].Length > maximumLength)
+        {
+            throw new InvalidDataException($"The voucher import XML has an invalid {name} value.");
+        }
+
+        return values[0];
+    }
+}
+
+internal enum VoucherNumberMode
+{
+    Source,
+    Tally,
 }
 
 internal sealed record VoucherImportFingerprint(
+    VoucherNumberMode NumberMode,
     string CorrelationId,
     VoucherSemanticFingerprint Semantic)
 {
     public DateOnly Date => Semantic.Date;
     public string VoucherType => Semantic.VoucherType;
-    public string VoucherNumber => Semantic.VoucherNumber;
+    public string? VoucherNumber => Semantic.VoucherNumber;
 }

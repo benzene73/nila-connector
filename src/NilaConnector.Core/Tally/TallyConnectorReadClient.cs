@@ -460,7 +460,7 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, ITallyMasterCli
     private static TallySyncedVoucher MapVoucher(Voucher voucher)
     {
         var guid = Clean(voucher.GUID);
-        var remoteId = Clean(voucher.RemoteId);
+        var remoteAltGuid = Clean(voucher.RemoteId);
         var masterId = voucher.MasterId == 0 || voucher.MasterId > long.MaxValue
             ? (long?)null
             : (long)voucher.MasterId;
@@ -497,7 +497,7 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, ITallyMasterCli
             identity,
             masterId,
             guid,
-            remoteId,
+            remoteAltGuid,
             date,
             voucherType,
             voucherNumber,

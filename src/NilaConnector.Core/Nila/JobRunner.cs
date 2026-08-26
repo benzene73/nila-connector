@@ -68,7 +68,8 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
         CancellationToken cancellationToken)
     {
         var command = ParseVoucherImport(envelope);
-        var expected = TallyRequestValidator.ReadSingleVoucherFingerprint(command);
+        var numberMode = ParseVoucherNumberMode(envelope);
+        var expected = TallyRequestValidator.ReadSingleVoucherFingerprint(command, numberMode);
         LogStarting(logger, jobId, command.Company);
 
         if (IsVerificationOnly(envelope))
@@ -233,23 +234,16 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
             expected.Date,
             cancellationToken);
 
-        var candidates = vouchers.Where(voucher =>
-            voucher.Date == expected.Date &&
-            string.Equals(
-                voucher.VoucherType,
-                expected.VoucherType,
-                StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(
-                voucher.VoucherNumber,
-                expected.VoucherNumber,
-                StringComparison.Ordinal)).ToArray();
+        var candidates = vouchers.Where(voucher => CandidateMatches(voucher, expected)).ToArray();
 
         if (candidates.Length == 0)
         {
             return new CandidateEvaluation(
                 CandidateState.Absent,
                 null,
-                "No voucher with the candidate key exists in Tally.");
+                expected.NumberMode == VoucherNumberMode.Tally
+                    ? "No voucher with the candidate REMOTEALTGUID exists in Tally."
+                    : "No voucher with the candidate key exists in Tally.");
         }
 
         if (candidates.Length > 1)
@@ -257,7 +251,9 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
             return new CandidateEvaluation(
                 CandidateState.Duplicate,
                 null,
-                $"Tally contains {candidates.Length} vouchers with the same company, type, number, and date. Nila will not choose one automatically.");
+                expected.NumberMode == VoucherNumberMode.Tally
+                    ? $"Tally contains {candidates.Length} vouchers with the same REMOTEALTGUID, type, and date. Nila will not choose one automatically."
+                    : $"Tally contains {candidates.Length} vouchers with the same company, type, number, and date. Nila will not choose one automatically.");
         }
 
         var candidate = candidates[0];
@@ -267,6 +263,15 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
                 CandidateState.Conflict,
                 candidate,
                 "Tally returned a candidate voucher without a usable MasterID.");
+        }
+
+        if (expected.NumberMode == VoucherNumberMode.Tally &&
+            string.IsNullOrWhiteSpace(candidate.VoucherNumber))
+        {
+            return new CandidateEvaluation(
+                CandidateState.Conflict,
+                candidate,
+                "Tally returned the voucher without an assigned voucher number.");
         }
 
         var actual = await tallyClient.GetVoucherFingerprintAsync(
@@ -294,7 +299,36 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
                 : new CandidateEvaluation(
                     CandidateState.Conflict,
                     candidate,
-                    "A Tally voucher has the same type, number, and date but different material contents. Nila will not overwrite or duplicate it.");
+                    expected.NumberMode == VoucherNumberMode.Tally
+                        ? "A Tally voucher has the same REMOTEALTGUID but different material contents. Nila will not overwrite or duplicate it."
+                        : "A Tally voucher has the same type, number, and date but different material contents. Nila will not overwrite or duplicate it.");
+    }
+
+    private static bool CandidateMatches(
+        TallySyncedVoucher voucher,
+        VoucherImportFingerprint expected)
+    {
+        if (voucher.Date != expected.Date ||
+            !string.Equals(
+                voucher.VoucherType,
+                expected.VoucherType,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return expected.NumberMode switch
+        {
+            VoucherNumberMode.Source => string.Equals(
+                voucher.VoucherNumber,
+                expected.VoucherNumber,
+                StringComparison.Ordinal),
+            VoucherNumberMode.Tally => string.Equals(
+                voucher.RemoteAltGuid,
+                expected.CorrelationId,
+                StringComparison.Ordinal),
+            _ => false,
+        };
     }
 
     private ConnectorJobResult CandidateResult(
@@ -312,6 +346,7 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
                 ["verified_existing"] = verifiedExisting,
                 ["master_id"] = voucher.MasterId,
                 ["tally_guid"] = voucher.TallyGuid,
+                ["remote_alt_guid"] = voucher.RemoteAltGuid,
                 ["voucher_number"] = voucher.VoucherNumber,
             });
         }
@@ -438,6 +473,28 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
         var xml = BoundedString(payload, "xml", 750_000, trim: false);
         var expectedCount = RequiredPositiveInt(payload, "expected_count");
         return new ImportVouchersCommand(company, xml, expectedCount);
+    }
+
+    private static VoucherNumberMode ParseVoucherNumberMode(JsonElement envelope)
+    {
+        if (!envelope.TryGetProperty("payload", out var payload) ||
+            payload.ValueKind != JsonValueKind.Object ||
+            !payload.TryGetProperty("voucher_number_mode", out var mode))
+        {
+            return VoucherNumberMode.Source;
+        }
+
+        if (mode.ValueKind != JsonValueKind.String)
+        {
+            throw new InvalidDataException("The voucher_number_mode is invalid.");
+        }
+
+        return mode.GetString() switch
+        {
+            "source" => VoucherNumberMode.Source,
+            "tally" => VoucherNumberMode.Tally,
+            _ => throw new InvalidDataException("The voucher_number_mode is invalid."),
+        };
     }
 
     private static CreateLedgerCommand? ParseOptionalPartyLedger(JsonElement envelope, string company)

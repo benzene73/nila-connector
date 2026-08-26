@@ -113,6 +113,62 @@ public sealed class VoucherFingerprintTests
     }
 
     [Fact]
+    public void FingerprintTreatsDestinationAssignedVoucherNumberAsIdentityNotMaterial()
+    {
+        var withoutNumber = XElement.Parse(VoucherXml);
+        withoutNumber.Element("VOUCHERNUMBER")!.Remove();
+        var expected = VoucherSemanticFingerprintBuilder.FromVoucher(
+            withoutNumber,
+            requireVoucherNumber: false);
+        var actual = VoucherSemanticFingerprintBuilder.FromVoucher(XElement.Parse(VoucherXml));
+
+        Assert.Null(expected.VoucherNumber);
+        Assert.Equal("38/2026-27", actual.VoucherNumber);
+        Assert.Equal(expected.CanonicalHash, actual.CanonicalHash);
+    }
+
+    [Fact]
+    public void FingerprintDetectsMaterialBankAllocationChanges()
+    {
+        var original = XElement.Parse(BankVoucherXml);
+        var changed = XElement.Parse(BankVoucherXml.Replace(
+            "REF-1",
+            "REF-2",
+            StringComparison.Ordinal));
+
+        var originalFingerprint = VoucherSemanticFingerprintBuilder.FromVoucher(
+            original,
+            requireVoucherNumber: false);
+        var changedFingerprint = VoucherSemanticFingerprintBuilder.FromVoucher(
+            changed,
+            requireVoucherNumber: false);
+
+        Assert.NotEqual(originalFingerprint.CanonicalHash, changedFingerprint.CanonicalHash);
+    }
+
+    [Fact]
+    public void FingerprintIgnoresPartyDefaultsTallyDerivesForAccountingVouchers()
+    {
+        var intended = XElement.Parse(BankVoucherXml);
+        var readBack = XElement.Parse(BankVoucherXml);
+        readBack.AddFirst(
+            new XElement("PARTYLEDGERNAME", "Cash"),
+            new XElement("GSTREGISTRATIONTYPE", "Regular"));
+        var counterEntry = readBack.Elements("ALLLEDGERENTRIES.LIST").First();
+        counterEntry.Element("ISPARTYLEDGER")!.Value = "Yes";
+        counterEntry.Add(new XElement("BANKALLOCATIONS.LIST"));
+
+        var intendedFingerprint = VoucherSemanticFingerprintBuilder.FromVoucher(
+            intended,
+            requireVoucherNumber: false);
+        var readBackFingerprint = VoucherSemanticFingerprintBuilder.FromVoucher(
+            readBack,
+            requireVoucherNumber: false);
+
+        Assert.Equal(intendedFingerprint.CanonicalHash, readBackFingerprint.CanonicalHash);
+    }
+
+    [Fact]
     public void InspectionPreservesEmptyCessValuationRecords()
     {
         var voucher = XElement.Parse(VoucherXml);
@@ -183,6 +239,7 @@ public sealed class VoucherFingerprintTests
             <DATA><COLLECTION>
               <VOUCHER REMOTEID="tally-generated" VCHTYPE="Sales">
                 <MASTERID>42</MASTERID>
+                <STATUS>No</STATUS>
                 <DATE>20260625</DATE>
                 <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
                 <VOUCHERNUMBER>38/2026-27</VOUCHERNUMBER>
@@ -199,5 +256,37 @@ public sealed class VoucherFingerprintTests
             </COLLECTION></DATA>
           </BODY>
         </ENVELOPE>
+        """;
+
+    private const string BankVoucherXml = """
+        <VOUCHER REMOTEID="nila-bank-1" VCHTYPE="Payment">
+          <DATE>20260601</DATE>
+          <VOUCHERTYPENAME>Payment</VOUCHERTYPENAME>
+          <PARTYLEDGERNAME>HDFC Bank</PARTYLEDGERNAME>
+          <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
+          <ISINVOICE>No</ISINVOICE>
+          <ALLLEDGERENTRIES.LIST>
+            <LEDGERNAME>Bank Charges</LEDGERNAME>
+            <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+            <ISPARTYLEDGER>No</ISPARTYLEDGER>
+            <AMOUNT>-413.00</AMOUNT>
+          </ALLLEDGERENTRIES.LIST>
+          <ALLLEDGERENTRIES.LIST>
+            <LEDGERNAME>HDFC Bank</LEDGERNAME>
+            <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+            <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+            <AMOUNT>413.00</AMOUNT>
+            <BANKALLOCATIONS.LIST>
+              <DATE>20260601</DATE>
+              <INSTRUMENTDATE>20260601</INSTRUMENTDATE>
+              <TRANSACTIONTYPE>Cheque</TRANSACTIONTYPE>
+              <PAYMENTFAVOURING>Bank Charges</PAYMENTFAVOURING>
+              <INSTRUMENTNUMBER>REF-1</INSTRUMENTNUMBER>
+              <PAYMENTMODE>Transacted</PAYMENTMODE>
+              <BANKPARTYNAME>Bank Charges</BANKPARTYNAME>
+              <AMOUNT>413.00</AMOUNT>
+            </BANKALLOCATIONS.LIST>
+          </ALLLEDGERENTRIES.LIST>
+        </VOUCHER>
         """;
 }

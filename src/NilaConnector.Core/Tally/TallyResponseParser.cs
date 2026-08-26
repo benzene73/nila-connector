@@ -279,11 +279,13 @@ internal static class TallyResponseParser
 
     private static void ValidateOptionalStatus(XDocument document)
     {
-        var statuses = document
-            .Descendants()
+        var statuses = document.Root?
+            .Elements()
+            .Where(element => element.Name.LocalName.Equals("HEADER", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(header => header.Elements())
             .Where(element => element.Name.LocalName.Equals("STATUS", StringComparison.OrdinalIgnoreCase))
             .Select(element => element.Value.Trim())
-            .ToArray();
+            .ToArray() ?? [];
 
         if (statuses.Length > 1 || (statuses.Length == 1 && statuses[0] != "1"))
         {
@@ -322,11 +324,13 @@ internal static class TallyResponseParser
                 $"Tally rejected the request: {Truncate(lineError.Trim(), 300)}");
         }
 
-        var statuses = document
-            .Descendants()
+        var statuses = document.Root?
+            .Elements()
+            .Where(element => element.Name.LocalName.Equals("HEADER", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(header => header.Elements())
             .Where(element => element.Name.LocalName.Equals("STATUS", StringComparison.OrdinalIgnoreCase))
             .Select(element => element.Value.Trim())
-            .ToArray();
+            .ToArray() ?? [];
 
         if (statuses.Length != 1)
         {

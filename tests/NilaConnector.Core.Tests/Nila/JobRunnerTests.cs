@@ -186,6 +186,48 @@ public sealed class JobRunnerTests
         Assert.Equal("ApplicationError", result.Details["kind"]);
     }
 
+    [Fact]
+    public async Task TallyNumberedPreflightRecoversByRemoteAltGuidWithoutSourceVoucherNumber()
+    {
+        var client = new ScriptedTallyClient(
+            reads: [Candidates(ExistingBankVoucher())],
+            actualFingerprint: ExpectedBankFingerprint());
+        var runner = new JobRunner(client, NullLogger<JobRunner>.Instance);
+        using var document = ImportJob(
+            voucherNumberMode: "tally",
+            xml: BankVoucherXml);
+
+        var result = await runner.ExecuteAsync(document.RootElement, CancellationToken.None);
+
+        Assert.Equal("succeeded", result.Status);
+        Assert.Equal(true, result.Details["verified_existing"]);
+        Assert.Equal(
+            "d852c969-e235-8279-8a28-6604139d9010",
+            result.Details["remote_alt_guid"]);
+        Assert.Equal("87", result.Details["voucher_number"]);
+        Assert.Equal(0, client.ImportCalls);
+        Assert.Equal(1, client.FingerprintCalls);
+    }
+
+    [Fact]
+    public async Task TallyNumberedImportRequiresRemoteAltGuid()
+    {
+        var runner = new JobRunner(
+            new ScriptedTallyClient(reads: []),
+            NullLogger<JobRunner>.Instance);
+        using var document = ImportJob(
+            voucherNumberMode: "tally",
+            xml: BankVoucherXml.Replace(
+                "<REMOTEALTGUID>d852c969-e235-8279-8a28-6604139d9010</REMOTEALTGUID>",
+                "",
+                StringComparison.Ordinal));
+
+        var result = await runner.ExecuteAsync(document.RootElement, CancellationToken.None);
+
+        Assert.Equal("failed", result.Status);
+        Assert.Equal("InvalidJob", result.Details["kind"]);
+    }
+
     private static JsonDocument CreateVoucherJob() => JsonDocument.Parse("""
         {
           "job_id": 12,
@@ -203,13 +245,17 @@ public sealed class JobRunnerTests
         }
         """);
 
-    private static JsonDocument ImportJob(bool verifyOnly = false)
+    private static JsonDocument ImportJob(
+        bool verifyOnly = false,
+        string voucherNumberMode = "source",
+        string? xml = null)
     {
         var payload = new Dictionary<string, object?>
         {
             ["company"] = "Caltech",
             ["expected_count"] = 1,
-            ["xml"] = VoucherXml,
+            ["xml"] = xml ?? VoucherXml,
+            ["voucher_number_mode"] = voucherNumberMode,
         };
         if (verifyOnly)
         {
@@ -229,6 +275,11 @@ public sealed class JobRunnerTests
         TallyRequestValidator.ReadSingleVoucherFingerprint(
             new ImportVouchersCommand("Caltech", VoucherXml, 1)).Semantic;
 
+    private static VoucherSemanticFingerprint ExpectedBankFingerprint() =>
+        TallyRequestValidator.ReadSingleVoucherFingerprint(
+            new ImportVouchersCommand("Caltech", BankVoucherXml, 1),
+            VoucherNumberMode.Tally).Semantic;
+
     private static TallySyncedVoucher[] Candidates(
         params TallySyncedVoucher[] vouchers) => vouchers;
 
@@ -236,15 +287,30 @@ public sealed class JobRunnerTests
         $"guid:tally-generated-{masterId}",
         masterId,
         "tally-generated-guid",
-        "tally-generated-remote-id",
+        null,
         new DateOnly(2026, 6, 25),
         "Sales",
         "38/2026-27",
         "Imported from Nila",
         new Dictionary<string, object?>());
 
+    private static TallySyncedVoucher ExistingBankVoucher(long masterId = 87) => new(
+        $"guid:tally-generated-{masterId}",
+        masterId,
+        "tally-generated-bank-guid",
+        "d852c969-e235-8279-8a28-6604139d9010",
+        new DateOnly(2026, 6, 1),
+        "Payment",
+        "87",
+        "Bank fee",
+        new Dictionary<string, object?>());
+
     private const string VoucherXml = """
         <ENVELOPE><HEADER><TALLYREQUEST>Import</TALLYREQUEST><TYPE>Data</TYPE><ID>Vouchers</ID></HEADER><BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>Caltech</SVCURRENTCOMPANY></STATICVARIABLES></DESC><DATA><TALLYMESSAGE><VOUCHER><DATE>20260625</DATE><GUID>75096e6e-23d6-43f0-a98a-54879c893e3c</GUID><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>38/2026-27</VOUCHERNUMBER><PARTYLEDGERNAME>Siemens Healthcare Private Limited</PARTYLEDGERNAME><PARTYGSTIN>29AAACI0995H1ZQ</PARTYGSTIN><PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW><ISINVOICE>Yes</ISINVOICE><NARRATION>Imported from Nila</NARRATION><LEDGERENTRIES.LIST><LEDGERNAME>Siemens Healthcare Private Limited</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><ISPARTYLEDGER>Yes</ISPARTYLEDGER><AMOUNT>-118.00</AMOUNT><BILLALLOCATIONS.LIST><NAME>38/2026-27</NAME><BILLTYPE>New Ref</BILLTYPE><AMOUNT>-118.00</AMOUNT></BILLALLOCATIONS.LIST></LEDGERENTRIES.LIST><LEDGERENTRIES.LIST><LEDGERNAME>Sales</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><ISPARTYLEDGER>No</ISPARTYLEDGER><AMOUNT>100.00</AMOUNT><GSTHSNNAME>9022</GSTHSNNAME><GSTOVRDNASSESSABLEVALUE>100.00</GSTOVRDNASSESSABLEVALUE></LEDGERENTRIES.LIST><LEDGERENTRIES.LIST><LEDGERNAME>Output IGST</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><ISPARTYLEDGER>No</ISPARTYLEDGER><AMOUNT>18.00</AMOUNT></LEDGERENTRIES.LIST></VOUCHER></TALLYMESSAGE></DATA></BODY></ENVELOPE>
+        """;
+
+    private const string BankVoucherXml = """
+        <ENVELOPE><HEADER><TALLYREQUEST>Import</TALLYREQUEST><TYPE>Data</TYPE><ID>Vouchers</ID></HEADER><BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>Caltech</SVCURRENTCOMPANY></STATICVARIABLES></DESC><DATA><TALLYMESSAGE><VOUCHER VCHTYPE="Payment"><REMOTEALTGUID>d852c969-e235-8279-8a28-6604139d9010</REMOTEALTGUID><DATE>20260601</DATE><VOUCHERTYPENAME>Payment</VOUCHERTYPENAME><PARTYLEDGERNAME>HDFC Bank</PARTYLEDGERNAME><PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW><ISINVOICE>No</ISINVOICE><NARRATION>Bank fee</NARRATION><LEDGERENTRIES.LIST><LEDGERNAME>Bank Charges</LEDGERNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><ISPARTYLEDGER>No</ISPARTYLEDGER><AMOUNT>-413.00</AMOUNT></LEDGERENTRIES.LIST><LEDGERENTRIES.LIST><LEDGERNAME>HDFC Bank</LEDGERNAME><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE><ISPARTYLEDGER>Yes</ISPARTYLEDGER><AMOUNT>413.00</AMOUNT></LEDGERENTRIES.LIST></VOUCHER></TALLYMESSAGE></DATA></BODY></ENVELOPE>
         """;
 
     private sealed class CreateFailureClient(TallyErrorKind kind) : ITallyClient
