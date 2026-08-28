@@ -77,14 +77,11 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, ITallyMasterCli
         {
             var request = new RequestOptions().SetCompany(company);
             var ledgers = await _service.GetLedgersAsync(request, token);
-            var ledgerGstDutyHeads = await GetLedgerGstDutyHeadsAsync(company, token);
             var voucherTypes = await _service.GetVoucherTypesAsync(request, token);
             var stockItems = await _service.GetStockItemsAsync(request, token);
             var numberingMethods = await GetVoucherNumberingMethodsAsync(company, token);
 
-            return ledgers.Select(ledger => MapLedger(
-                    ledger,
-                    ledgerGstDutyHeads.GetValueOrDefault(ledger.Name)))
+            return ledgers.Select(MapLedger)
                 .Concat(voucherTypes.Select(voucherType =>
                     MapVoucherType(
                         voucherType,
@@ -350,28 +347,7 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, ITallyMasterCli
         _ => throw new InvalidDataException($"Unsupported GST registration type '{value}'."),
     };
 
-    private async Task<IReadOnlyDictionary<string, string>> GetLedgerGstDutyHeadsAsync(
-        string company,
-        CancellationToken cancellationToken)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Post, _options.Endpoint)
-        {
-            Content = new StringContent(
-                TallyRequests.LedgerGstDutyHeads(company),
-                Encoding.UTF8,
-                "text/xml"),
-        };
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-
-        return await TallyResponseParser.ParseLedgerGstDutyHeadsAsync(
-            stream,
-            _options.MaxResponseBytes,
-            cancellationToken);
-    }
-
-    private static TallyMaster MapLedger(Ledger ledger, string? gstDutyHead) =>
+    internal static TallyMaster MapLedger(Ledger ledger) =>
         Master(
             "ledger",
             ledger.Name,
@@ -386,7 +362,7 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, ITallyMasterCli
                 ["base_units"] = null,
                 ["currency"] = Clean(ledger.Currency),
                 ["tax_type"] = ledger.TaxType?.ToString(),
-                ["gst_duty_head"] = Clean(gstDutyHead),
+                ["gst_duty_head"] = Clean(ledger.GSTDutyHead?.ToString()),
                 ["gst_type"] = ledger.GSTTaxType?.ToString(),
                 ["gst_type_of_supply"] = ledger.GSTTypeOfSupply?.ToString(),
                 ["gstin"] = Clean(ledger.GSTRegistrationDetails?.FirstOrDefault()?.GSTIN),

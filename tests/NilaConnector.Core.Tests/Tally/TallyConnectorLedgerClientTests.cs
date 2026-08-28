@@ -5,12 +5,28 @@ using System.Reflection;
 using System.Xml.Serialization;
 using TallyConnector.Core.Models;
 using TallyConnector.Core.Models.Response;
+using TallyConnector.Models.Common;
+using TallyConnector.Models.TallyPrime.V7.Masters;
 using TallyConnector.Services;
 
 namespace NilaConnector.Core.Tests.Tally;
 
 public sealed class TallyConnectorLedgerClientTests
 {
+    [Fact]
+    public void MapsTheTypedGstDutyHeadIntoTheSyncContract()
+    {
+        var master = TallyConnectorReadClient.MapLedger(new Ledger
+        {
+            Name = "Output IGST",
+            TaxType = TaxType.GST,
+            GSTDutyHead = GSTTaxType.IGST,
+        });
+
+        Assert.Equal("GST", master.Data["tax_type"]);
+        Assert.Equal("IGST", master.Data["gst_duty_head"]);
+    }
+
     [Fact]
     public async Task PostsTheTypedLedgerThroughTheSdkInTheExplicitCompany()
     {

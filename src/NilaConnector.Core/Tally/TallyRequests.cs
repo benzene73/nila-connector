@@ -6,33 +6,6 @@ namespace NilaConnector.Core.Tally;
 
 internal static class TallyRequests
 {
-    public static string LedgerGstDutyHeads(string company)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(company);
-
-        return new XDocument(
-            new XElement("ENVELOPE",
-                new XElement("HEADER",
-                    new XElement("VERSION", "1"),
-                    new XElement("TALLYREQUEST", "Export"),
-                    new XElement("TYPE", "Collection"),
-                    new XElement("ID", "Nila Ledger GST Duty Heads")),
-                new XElement("BODY",
-                    new XElement("DESC",
-                        new XElement("STATICVARIABLES",
-                            new XElement("SVEXPORTFORMAT", "$$SysName:XML"),
-                            new XElement("SVCURRENTCOMPANY", company)),
-                        new XElement("TDL",
-                            new XElement("TDLMESSAGE",
-                                new XElement("COLLECTION",
-                                    new XAttribute("NAME", "Nila Ledger GST Duty Heads"),
-                                    new XAttribute("ISINITIALIZE", "Yes"),
-                                    new XElement("TYPE", "Ledger"),
-                                    new XElement("NATIVEMETHOD", "Name"),
-                                    new XElement("NATIVEMETHOD", "GSTDutyHead"))))))))
-            .ToString(SaveOptions.DisableFormatting);
-    }
-
     public static string VoucherNumberingMethods(string company)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(company);

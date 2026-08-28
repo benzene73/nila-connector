@@ -9,34 +9,6 @@ namespace NilaConnector.Core.Tally;
 
 internal static class TallyResponseParser
 {
-    public static async Task<IReadOnlyDictionary<string, string>> ParseLedgerGstDutyHeadsAsync(
-        Stream response,
-        int maxCharacters,
-        CancellationToken cancellationToken)
-    {
-        var document = await LoadDocumentAsync(response, maxCharacters, cancellationToken);
-        ValidateApplicationStatus(document);
-
-        var dutyHeads = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var ledger in document.Descendants()
-                     .Where(element => element.Name.LocalName.Equals(
-                         "LEDGER",
-                         StringComparison.OrdinalIgnoreCase)))
-        {
-            var name = Normalize(ledger.Attribute("NAME")?.Value) ??
-                       Normalize(DirectValue(ledger, "NAME"));
-            var dutyHead = Normalize(DirectValue(ledger, "GSTDUTYHEAD"));
-
-            if (name is not null && dutyHead is not null)
-            {
-                dutyHeads[name] = dutyHead;
-            }
-        }
-
-        return dutyHeads;
-    }
-
     public static async Task<TallyVoucherResult> ParseVoucherImportAsync(
         Stream response,
         int maxCharacters,
@@ -383,11 +355,6 @@ internal static class TallyResponseParser
     }
 
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-    private static string? DirectValue(XElement parent, string name) =>
-        parent.Elements()
-            .FirstOrDefault(element => element.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase))
-            ?.Value;
 
     private static XElement[] MaterialVouchers(XDocument document) =>
         document.Descendants()

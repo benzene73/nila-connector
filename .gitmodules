@@ -1,0 +1,3 @@
+[submodule "vendor/TallyConnector"]
+	path = vendor/TallyConnector
+	url = https://github.com/KaguyaHQ/TallyConnector.git
