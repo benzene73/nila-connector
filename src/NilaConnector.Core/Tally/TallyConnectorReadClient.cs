@@ -216,17 +216,21 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, ITallyMasterCli
             using var request = new HttpRequestMessage(HttpMethod.Post, _options.Endpoint)
             {
                 Content = new StringContent(
-                    TallyRequests.VoucherFingerprint(company, voucherDate, masterId),
+                    TallyRequests.VoucherInspection(company, voucherDate, masterId),
                     Encoding.UTF8,
                     "text/xml"),
             };
             using var response = await _httpClient.SendAsync(request, token);
             response.EnsureSuccessStatusCode();
             await using var stream = await response.Content.ReadAsStreamAsync(token);
-            return await TallyResponseParser.ParseVoucherInspectionAsync(
+            var inspection = await TallyResponseParser.ParseVoucherInspectionAsync(
                 stream,
                 _options.MaxResponseBytes,
                 token);
+            // Object export can ignore the period variables: never leak a different date/ID.
+            if (inspection is not null && inspection.MasterId != masterId)
+                throw new InvalidDataException("Tally returned a different voucher MasterID.");
+            return inspection?.Date == voucherDate ? inspection : null;
         }, cancellationToken);
     }
 

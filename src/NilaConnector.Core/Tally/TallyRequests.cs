@@ -6,6 +6,22 @@ namespace NilaConnector.Core.Tally;
 
 internal static class TallyRequests
 {
+    public static string VoucherInspection(string company, DateOnly date, long masterId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(company);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(masterId);
+        return new XElement("ENVELOPE",
+            new XElement("HEADER", new XElement("VERSION", 1), new XElement("TALLYREQUEST", "Export"),
+                new XElement("TYPE", "Object"), new XElement("SUBTYPE", "Voucher"),
+                new XElement("ID", new XAttribute("TYPE", "Name"), $"ID:{masterId.ToString(CultureInfo.InvariantCulture)}")),
+            new XElement("BODY", new XElement("DESC",
+                new XElement("STATICVARIABLES", new XElement("SVCURRENTCOMPANY", company),
+                    new XElement("SVEXPORTFORMAT", "$$SysName:XML"),
+                    new XElement("SVFROMDATE", date.ToString("yyyyMMdd", CultureInfo.InvariantCulture)),
+                    new XElement("SVTODATE", date.ToString("yyyyMMdd", CultureInfo.InvariantCulture))),
+                new XElement("FETCHLIST", new XElement("FETCH", "*")))))
+            .ToString(SaveOptions.DisableFormatting);
+    }
     public static string VoucherNumberingMethods(string company)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(company);

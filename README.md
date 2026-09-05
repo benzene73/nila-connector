@@ -1,5 +1,8 @@
 # Nila Connector
 
+For repeatable disposable GST voucher experiments, see the
+[fixture harness and native export runbook](docs/gst-fixtures.md).
+
 Nila Connector is the Windows desktop agent that will bridge `nila.tax` with a
 locally running TallyPrime instance. The application targets .NET 10 and uses a
 small WPF shell; transport and accounting logic live outside the UI project.

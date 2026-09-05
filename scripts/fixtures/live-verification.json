@@ -1,0 +1,44 @@
+{
+  "captured_on": "2026-09-05",
+  "company_guid": "fb7551b0-e015-4489-bb16-135a58fa492d",
+  "voucher_master_ids": [
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64
+  ],
+  "artifacts": [
+    {
+      "byte_size": 1075,
+      "key": "tally/caltech/sdk-fixtures/2026-09-05/native-2026-04.json",
+      "sha256": "9ecdf8c3bba65effe6960eb3c75a869a840e273e0eff2388da107fe2401ad423",
+      "bucket": "nila-eval-corpus"
+    },
+    {
+      "byte_size": 1426,
+      "key": "tally/caltech/sdk-fixtures/2026-09-05/native-2026-05.json",
+      "sha256": "c85accf6472594f783b0d749cf5c69cb93d14dffa5d9dbd9f59bf868f243a134",
+      "bucket": "nila-eval-corpus"
+    },
+    {
+      "byte_size": 45053,
+      "key": "tally/caltech/sdk-fixtures/2026-09-05/Credit Note_SDK-NU-CN-B.pdf",
+      "sha256": "40679496a23b48b38f6a2532f8bff7ea1be4c906a7c9fcc9e30ca43b7a0f933c",
+      "bucket": "nila-eval-corpus"
+    }
+  ]
+}

@@ -39,7 +39,9 @@ internal static class TallyRequestValidator
         XDocument document;
         try
         {
-            using var text = new StringReader(command.Xml);
+            // Tally emits this system-name sentinel for Not Applicable; omit it only
+            // from validation. The original request is sent unchanged to Tally.
+            using var text = new StringReader(command.Xml.Replace("&#4; Not Applicable", "Not Applicable", StringComparison.Ordinal));
             using var reader = XmlReader.Create(text, settings);
             document = XDocument.Load(reader, LoadOptions.None);
         }

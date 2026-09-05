@@ -19,7 +19,15 @@ public sealed record VoucherInspection(
     bool? IsInvoice,
     string? Narration,
     IReadOnlyList<VoucherLedgerInspection> LedgerEntries,
-    IReadOnlyList<VoucherInventoryInspection> InventoryEntries);
+    IReadOnlyList<VoucherInventoryInspection> InventoryEntries)
+{
+    public string? OriginalSaleCategory { get; init; }
+    public string? Reference { get; init; }
+    public DateOnly? ReferenceDate { get; init; }
+    public IReadOnlyList<VoucherOriginalInvoice> OriginalInvoices { get; init; } = [];
+}
+
+public sealed record VoucherOriginalInvoice(string? Number, DateOnly? Date);
 
 public sealed record VoucherLedgerInspection(
     string LedgerName,
@@ -79,7 +87,15 @@ internal static class VoucherInspectionBuilder
                 .Select(Inventory)
                 .Where(entry => entry is not null)
                 .Cast<VoucherInventoryInspection>()
-                .ToArray());
+                .ToArray())
+        {
+            OriginalSaleCategory = Text(Direct(voucher, "URDORIGINALSALEVALUE")),
+            Reference = Text(Direct(voucher, "REFERENCE")),
+            ReferenceDate = OptionalDate(Direct(voucher, "REFERENCEDATE")),
+            OriginalInvoices = voucher.Elements("ORIGINVOICEDETAILS.LIST")
+                .Select(element => new VoucherOriginalInvoice(Text(Direct(element, "ORIGINVOICENUMBER")),
+                    OptionalDate(Direct(element, "ORIGINVOICEDATE")))).ToArray()
+        };
     }
 
     private static VoucherLedgerInspection? Ledger(XElement entry)
@@ -131,6 +147,8 @@ internal static class VoucherInspectionBuilder
         DateOnly.TryParseExact(value, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
             ? date
             : throw new InvalidDataException("The voucher inspection has an invalid DATE value.");
+
+    private static DateOnly? OptionalDate(string? value) => string.IsNullOrWhiteSpace(value) ? null : Date(value);
 
     private static long Long(string value, string name) =>
         long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number > 0
