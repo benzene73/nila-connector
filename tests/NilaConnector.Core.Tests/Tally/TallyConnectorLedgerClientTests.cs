@@ -66,6 +66,40 @@ public sealed class TallyConnectorLedgerClientTests
     }
 
     [Fact]
+    public async Task PostsSalesMasterSystemValuesAndGstRatesThroughTheSdk()
+    {
+        const string response = "<RESULTS><RESULT><OBJECTTYPE>Ledger</OBJECTTYPE><NAME>Service Sales</NAME><MASTERID>43</MASTERID><GUID>sales-guid</GUID></RESULT></RESULTS>";
+        await using var server = new FakeTallyServer(response);
+        using var client = new TallyConnectorReadClient(new TallyClientOptions { Endpoint = server.Endpoint });
+        SetLicenseInfo(client, server.Endpoint);
+        var command = Command() with
+        {
+            Name = "Service Sales", Parent = "Sales Accounts", Gstin = "",
+            SalesGst = new GstSalesLedgerSettings("998719", "Repairs", true, 18, GstSalesTreatment.SezWithPayment)
+        };
+
+        var result = await client.CreateLedgerAsync(command, CancellationToken.None);
+        var request = await server.RequestBody;
+
+        Assert.Equal(43, result.MasterId);
+        Assert.Contains("<SVCURRENTCOMPANY>Nila &amp; Co</SVCURRENTCOMPANY>", request);
+        Assert.Contains("<GSTAPPLICABLE>&#4; Applicable</GSTAPPLICABLE>", request);
+        Assert.Contains("<STATENAME>&#4; Any</STATENAME>", request);
+        Assert.Contains("<GSTRATEVALUATIONTYPE>&#4; Not Applicable</GSTRATEVALUATIONTYPE>", request);
+        Assert.DoesNotContain("&#x4;", request);
+        Assert.Contains("<GSTRATE>18</GSTRATE>", request);
+        Assert.Contains("<HSNCODE>998719</HSNCODE>", request);
+        Assert.Contains("<GSTNATUREOFTRANSACTION>Sales to SEZ - Taxable</GSTNATUREOFTRANSACTION>", request);
+    }
+
+    [Fact]
+    public void MapsSezRecipientRegistration()
+    {
+        var ledger = TallyConnectorReadClient.BuildLedger(Command() with { RegistrationType = "Regular - SEZ" });
+        Assert.Equal("RegularSEZ", Assert.Single(ledger.GSTRegistrationDetails!).GSTRegistrationType.ToString());
+    }
+
+    [Fact]
     public void MapsRegisteredPartyLedgerToTheTypedSdkModel()
     {
         var command = Command();

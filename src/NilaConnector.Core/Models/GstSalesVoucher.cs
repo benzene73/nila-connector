@@ -5,6 +5,7 @@ namespace NilaConnector.Core.Models;
 
 public enum OriginalSaleCategory { Small, Large }
 public enum GstTaxability { Taxable, NilRated, Exempt, NonGst }
+public enum GstSalesTreatment { Domestic, ReverseCharge, SezWithPayment, SezWithoutPayment, ExportWithPayment, ExportWithoutPayment }
 
 /// <summary>Accounting-invoice XML fields; the caller supplies the accounting classification.</summary>
 public sealed record GstSalesVoucher(
@@ -14,11 +15,19 @@ public sealed record GstSalesVoucher(
     string HsnDescription, bool Services, GstTaxability Taxability,
     decimal Value, decimal Rate, string? OriginalNumber = null, DateOnly? OriginalDate = null,
     OriginalSaleCategory? OriginalCategory = null,
-    string CgstLedger = "Output CGST", string SgstLedger = "Output SGST", string IgstLedger = "Output IGST")
+    string CgstLedger = "Output CGST", string SgstLedger = "Output SGST", string IgstLedger = "Output IGST",
+    GstSalesTreatment Treatment = GstSalesTreatment.Domestic, string Country = "India")
 {
     public ImportVouchersCommand ToImportCommand(string company)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(company);
+        if (!Enum.IsDefined(Treatment)) throw new ArgumentException("Unknown sales treatment.");
+        if (Treatment != GstSalesTreatment.Domestic && (VoucherType != "Sales" || Taxability != GstTaxability.Taxable))
+            throw new ArgumentException("Special treatments currently require a taxable sales invoice.");
+        if ((Treatment == GstSalesTreatment.ReverseCharge || IsSez) && string.IsNullOrWhiteSpace(PartyGstin))
+            throw new ArgumentException("RCM and SEZ fixtures require a registered recipient.");
+        if (IsExport && (!string.IsNullOrWhiteSpace(PartyGstin) || Country == "India" || string.IsNullOrWhiteSpace(Country)))
+            throw new ArgumentException("Export fixtures require a foreign country and no recipient GSTIN.");
         foreach (var required in new[] { Number, SellerGstin, SellerState, RegistrationName, PartyLedger,
                      PartyName, PlaceOfSupply, SalesLedger, HsnSac, CgstLedger, SgstLedger, IgstLedger })
             ArgumentException.ThrowIfNullOrWhiteSpace(required);
@@ -34,10 +43,10 @@ public sealed record GstSalesVoucher(
             throw new ArgumentException("Original B2C category requires an unregistered recipient.");
 
         var sign = VoucherType == "Credit Note" ? -1m : 1m;
-        var local = PlaceOfSupply == SellerState;
+        var local = Treatment is GstSalesTreatment.Domestic or GstSalesTreatment.ReverseCharge && PlaceOfSupply == SellerState;
         var tax = decimal.Round(Value * Rate / 100, 2, MidpointRounding.AwayFromZero);
         var halfTax = decimal.Round(Value * Rate / 200, 2, MidpointRounding.AwayFromZero);
-        var totalTax = local ? halfTax * 2 : tax;
+        var totalTax = CollectsTax ? (local ? halfTax * 2 : tax) : 0;
         var date = Date.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
         var voucher = new XElement("VOUCHER", new XAttribute("VCHTYPE", VoucherType),
             new XAttribute("ACTION", "Create"), new XAttribute("OBJVIEW", "Invoice Voucher View"));
@@ -46,7 +55,7 @@ public sealed record GstSalesVoucher(
         Field("VOUCHERTYPENAME", VoucherType); Field("VOUCHERNUMBER", Number);
         Field("NUMBERINGSTYLE", "Manual"); Field("PERSISTEDVIEW", "Invoice Voucher View");
         Field("VCHENTRYMODE", "Accounting Invoice"); Field("ISINVOICE", "Yes");
-        Field("ISGSTOVERRIDDEN", "No"); Field("ISREVERSECHARGEAPPLICABLE", "No");
+        Field("ISGSTOVERRIDDEN", "No"); Field("ISREVERSECHARGEAPPLICABLE", Treatment == GstSalesTreatment.ReverseCharge ? "Yes" : "No");
         Field("CMPGSTIN", SellerGstin); Field("CMPGSTSTATE", SellerState); Field("CMPGSTREGISTRATIONTYPE", "Regular");
         voucher.Add(new XElement("GSTREGISTRATION", new XAttribute("TAXTYPE", "GST"),
             new XAttribute("TAXREGISTRATION", SellerGstin), RegistrationName));
@@ -54,8 +63,9 @@ public sealed record GstSalesVoucher(
         Field("PARTYMAILINGNAME", PartyName); Field("CONSIGNEEMAILINGNAME", PartyName);
         Field("PARTYGSTIN", PartyGstin); Field("CONSIGNEEGSTIN", PartyGstin);
         Field("STATENAME", PlaceOfSupply); Field("PLACEOFSUPPLY", PlaceOfSupply); Field("CONSIGNEESTATENAME", PlaceOfSupply);
-        Field("COUNTRYOFRESIDENCE", "India"); Field("CONSIGNEECOUNTRYNAME", "India");
-        Field("GSTREGISTRATIONTYPE", string.IsNullOrEmpty(PartyGstin) ? "Unregistered/Consumer" : "Regular");
+        Field("COUNTRYOFRESIDENCE", Country); Field("CONSIGNEECOUNTRYNAME", Country);
+        Field("GSTREGISTRATIONTYPE", IsSez ? "Regular - SEZ" : IsExport ? "&#4; Unknown" : string.IsNullOrEmpty(PartyGstin) ? "Unregistered/Consumer" : "Regular");
+        if (NatureOfTransaction is not null) Field("GSTNATUREOFTRANSACTION", NatureOfTransaction);
         Field("REFERENCE", OriginalNumber);
         Field("REFERENCEDATE", OriginalDate?.ToString("yyyyMMdd", CultureInfo.InvariantCulture));
         if (OriginalCategory is not null)
@@ -68,6 +78,9 @@ public sealed record GstSalesVoucher(
         }
         voucher.Add(Entry(PartyLedger, -sign * (Value + totalTax), true));
         var sales = Entry(SalesLedger, sign * Value, false);
+        if (Treatment == GstSalesTreatment.ReverseCharge)
+            sales.Add(new XElement("GSTOVRDNISREVCHARGEAPPL", "&#4; Applicable"), new XElement("GSTOVRDNSTOREDNATURE", "&#4; System Inferred"));
+        if (NatureOfTransaction is not null) sales.Add(new XElement("GSTOVRDNNATURE", NatureOfTransaction));
         sales.Add(new XElement("GSTSOURCETYPE", "Ledger"), new XElement("GSTLEDGERSOURCE", SalesLedger),
             new XElement("HSNSOURCETYPE", "Ledger"), new XElement("HSNLEDGERSOURCE", SalesLedger),
             new XElement("GSTOVRDNTAXABILITY", TaxabilityText),
@@ -80,7 +93,7 @@ public sealed record GstSalesVoucher(
             sales.Add(new XElement("RATEDETAILS.LIST", new XElement("GSTRATEDUTYHEAD", head),
                 new XElement("GSTRATEVALUATIONTYPE", head == "Cess" ? "&#4; Not Applicable" : "Based on Value"), new XElement("GSTRATE", rate)));
         voucher.Add(sales);
-        if (Rate != 0)
+        if (Rate != 0 && CollectsTax)
         {
             if (local) { voucher.Add(Entry(CgstLedger, sign * halfTax, false)); voucher.Add(Entry(SgstLedger, sign * halfTax, false)); }
             else voucher.Add(Entry(IgstLedger, sign * tax, false));
@@ -90,8 +103,20 @@ public sealed record GstSalesVoucher(
             new XElement("BODY", new XElement("DESC", new XElement("STATICVARIABLES", new XElement("SVCURRENTCOMPANY", company))),
                 new XElement("DATA", new XElement("TALLYMESSAGE", voucher))));
         // Tally's system-name sentinel is a numeric reference outside XML 1.0.
-        return new(company, envelope.ToString(SaveOptions.DisableFormatting).Replace("&amp;#4; Not Applicable", "&#4; Not Applicable", StringComparison.Ordinal), 1);
+        return new(company, envelope.ToString(SaveOptions.DisableFormatting).Replace("&amp;#4; Not Applicable", "&#4; Not Applicable", StringComparison.Ordinal).Replace("&amp;#4; Applicable", "&#4; Applicable", StringComparison.Ordinal).Replace("&amp;#4; System Inferred", "&#4; System Inferred", StringComparison.Ordinal).Replace("&amp;#4; Unknown", "&#4; Unknown", StringComparison.Ordinal), 1);
     }
+
+    public bool IsSez => Treatment is GstSalesTreatment.SezWithPayment or GstSalesTreatment.SezWithoutPayment;
+    public bool IsExport => Treatment is GstSalesTreatment.ExportWithPayment or GstSalesTreatment.ExportWithoutPayment;
+    public bool CollectsTax => Treatment is GstSalesTreatment.Domestic or GstSalesTreatment.SezWithPayment or GstSalesTreatment.ExportWithPayment;
+    public string? NatureOfTransaction => Treatment switch
+    {
+        GstSalesTreatment.SezWithPayment => "Sales to SEZ - Taxable",
+        GstSalesTreatment.SezWithoutPayment => "Sales to SEZ - LUT/Bond",
+        GstSalesTreatment.ExportWithPayment => "Exports - Taxable",
+        GstSalesTreatment.ExportWithoutPayment => "Exports - LUT/Bond",
+        _ => null
+    };
 
     public string TaxabilityText => Taxability switch
     { GstTaxability.Taxable => "Taxable", GstTaxability.NilRated => "Nil Rated", GstTaxability.Exempt => "Exempt", GstTaxability.NonGst => "Non-GST", _ => throw new ArgumentOutOfRangeException() };

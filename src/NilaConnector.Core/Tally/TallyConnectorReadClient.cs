@@ -152,14 +152,9 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, ITallyMasterCli
 
         return await ExecuteAsync(async token =>
         {
-            var responses = await _service.PostObjectsAsyncNew(
-                [BuildLedger(command)],
-                new PostRequestOptions
-                {
-                    Company = command.Company,
-                    StopatFirstError = true,
-                },
-                token);
+            var request = new PostRequestOptions { Company = command.Company, StopatFirstError = true };
+            // The text serializer preserves Tally's system-name character references.
+            var responses = await _service.PostObjectsAsyncNew([BuildLedger(command)], request, token);
 
             return ParseLedgerResponse(command, responses);
         }, cancellationToken);
@@ -310,7 +305,7 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, ITallyMasterCli
     {
         var applicableFrom = command.ApplicableFrom.ToDateTime(TimeOnly.MinValue);
 
-        return new TallyLedger
+        var ledger = new TallyLedger
         {
             Name = command.Name,
             Group = command.Parent,
@@ -342,12 +337,49 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, ITallyMasterCli
                 },
             ],
         };
+
+        if (command.SalesGst is { } gst)
+        {
+            if (command.Parent != "Sales Accounts" || gst.Rate < 0 || gst.Rate > 100 || !Enum.IsDefined(gst.Treatment))
+                throw new ArgumentException("GST sales settings require a sales ledger and valid rate/treatment.");
+            ArgumentException.ThrowIfNullOrWhiteSpace(gst.HsnSac);
+            ledger.IsBillWise = false;
+            ledger.GSTRegistrationDetails = null;
+            ledger.MailingDetails = null;
+            ledger.GSTApplicable = "\u0004 Applicable";
+            ledger.GSTTypeOfSupply = gst.Services ? TallyConnector.Models.Base.Masters.GSTTypeOfSupply.Services : TallyConnector.Models.Base.Masters.GSTTypeOfSupply.Goods;
+            ledger.HSNDetails = [new HSNDetail { ApplicableFrom = applicableFrom, HSNCode = gst.HsnSac, HSNDescription = gst.Description, Source = "Specify Details Here" }];
+            ledger.GSTDetails = [new GSTDetail
+            {
+                ApplicableFrom = applicableFrom,
+                Taxability = GSTTaxabilityType.Taxable,
+                SourceOfGSTDetails = "Specify Details Here",
+                CalculationType = "On Value",
+                IsReverseChargeApplicable = gst.Treatment == GstSalesTreatment.ReverseCharge,
+                NatureOfTransaction = gst.Treatment switch
+                {
+                    GstSalesTreatment.SezWithPayment => GSTNatureOfTransaction.SalestoSEZTaxable,
+                    GstSalesTreatment.SezWithoutPayment => GSTNatureOfTransaction.SalestoSEZ_LUT_Bond,
+                    GstSalesTreatment.ExportWithPayment => GSTNatureOfTransaction.ExportsTaxable,
+                    GstSalesTreatment.ExportWithoutPayment => GSTNatureOfTransaction.Exports_LUT_Bond,
+                    _ => GSTNatureOfTransaction.None
+                },
+                StateWiseDetails = [new StateWiseDetail
+                {
+                    StateName = "\u0004 Any",
+                    GSTRateDetails = new[] { ("CGST", gst.Rate / 2), ("SGST/UTGST", gst.Rate / 2), ("IGST", gst.Rate), ("Cess", 0m), ("State Cess", 0m) }
+                        .Select(rate => new GSTRateDetail { DutyHead = rate.Item1, GSTRate = (float)rate.Item2, ValuationType = rate.Item1 == "Cess" ? "\u0004 Not Applicable" : "Based on Value" }).ToList()
+                }]
+            }];
+        }
+        return ledger;
     }
 
     private static GSTRegistrationType RegistrationType(string value) => value switch
     {
         "Regular" => GSTRegistrationType.Regular,
         "Unregistered" => GSTRegistrationType.Unregistered,
+        "Regular - SEZ" => GSTRegistrationType.RegularSEZ,
         _ => throw new InvalidDataException($"Unsupported GST registration type '{value}'."),
     };
 
@@ -370,6 +402,10 @@ public sealed class TallyConnectorReadClient : ITallyReadClient, ITallyMasterCli
                 ["gst_type"] = ledger.GSTTaxType?.ToString(),
                 ["gst_type_of_supply"] = ledger.GSTTypeOfSupply?.ToString(),
                 ["gstin"] = Clean(ledger.GSTRegistrationDetails?.FirstOrDefault()?.GSTIN),
+                ["gst_registration_type"] = ledger.GSTRegistrationDetails?.FirstOrDefault()?.GSTRegistrationType.ToString(),
+                ["gst_applicable"] = ledger.GSTApplicable,
+                ["gst_details"] = ledger.GSTDetails,
+                ["hsn_details"] = ledger.HSNDetails,
                 ["state"] = Clean(ledger.GSTRegistrationDetails?.FirstOrDefault()?.State),
                 ["rate_of_tax"] = ledger.RateofTax,
                 ["pan"] = Clean(ledger.PANNumber),

@@ -8,6 +8,35 @@ namespace NilaConnector.Core.Tests.Tally;
 
 public sealed class GstSalesVoucherTests
 {
+    [Theory]
+    [InlineData(GstSalesTreatment.ReverseCharge, 1000, false)]
+    [InlineData(GstSalesTreatment.SezWithPayment, 1180, true)]
+    [InlineData(GstSalesTreatment.SezWithoutPayment, 1000, false)]
+    [InlineData(GstSalesTreatment.ExportWithPayment, 1180, true)]
+    [InlineData(GstSalesTreatment.ExportWithoutPayment, 1000, false)]
+    public void SpecialSalesBalanceAndOnlyCollectTaxWhenPayable(GstSalesTreatment treatment, decimal total, bool collects)
+    {
+        var export = treatment is GstSalesTreatment.ExportWithPayment or GstSalesTreatment.ExportWithoutPayment;
+        var invoice = Note with { VoucherType = "Sales", OriginalNumber = null, OriginalDate = null, OriginalCategory = null,
+            Value = 1000, Rate = 18, Treatment = treatment, PlaceOfSupply = Note.SellerState,
+            PartyGstin = export ? null : "33AEWPH4158J1Z3", Country = export ? "United States of America" : "India" };
+        var command = invoice.ToImportCommand("Disposable");
+        TallyRequestValidator.ValidateVoucherImport(command);
+        if (treatment == GstSalesTreatment.ReverseCharge)
+        {
+            Assert.Contains("<GSTOVRDNISREVCHARGEAPPL>&#4; Applicable</GSTOVRDNISREVCHARGEAPPL>", command.Xml);
+            Assert.Contains("<GSTOVRDNSTOREDNATURE>&#4; System Inferred</GSTOVRDNSTOREDNATURE>", command.Xml);
+        }
+        if (export) Assert.Contains("<GSTREGISTRATIONTYPE>&#4; Unknown</GSTREGISTRATIONTYPE>", command.Xml);
+        var xml = XDocument.Parse(command.Xml.Replace("&#4; ", "", StringComparison.Ordinal));
+        var entries = xml.Descendants("LEDGERENTRIES.LIST").ToArray();
+        Assert.Equal(-total, (decimal)entries[0].Element("AMOUNT")!);
+        Assert.Equal(0, entries.Sum(e => (decimal)e.Element("AMOUNT")!));
+        Assert.Equal(collects ? 3 : 2, entries.Length);
+        if (collects) Assert.Equal("Output IGST", entries[2].Element("LEDGERNAME")!.Value);
+        if (invoice.IsSez) Assert.Equal("Regular - SEZ", xml.Descendants("GSTREGISTRATIONTYPE").Single().Value);
+    }
+
     [Fact]
     public void RejectsInconsistentOriginalReferencesAndUnexpectedControlReferences()
     {

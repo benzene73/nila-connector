@@ -22,6 +22,9 @@ public sealed record VoucherInspection(
     IReadOnlyList<VoucherInventoryInspection> InventoryEntries)
 {
     public string? OriginalSaleCategory { get; init; }
+    public bool? ReverseCharge { get; init; }
+    public string? GstNature { get; init; }
+    public string? Country { get; init; }
     public string? Reference { get; init; }
     public DateOnly? ReferenceDate { get; init; }
     public IReadOnlyList<VoucherOriginalInvoice> OriginalInvoices { get; init; } = [];
@@ -39,7 +42,12 @@ public sealed record VoucherLedgerInspection(
     string? HsnSac,
     string? HsnDescription,
     decimal? AssessableValue,
-    IReadOnlyList<VoucherGstRateInspection> Rates);
+    IReadOnlyList<VoucherGstRateInspection> Rates)
+{
+    public string? ReverseChargeApplicability { get; init; }
+    public string? GstNature { get; init; }
+    public string? StoredGstNature { get; init; }
+}
 
 public sealed record VoucherGstRateInspection(
     string? DutyHead,
@@ -90,6 +98,9 @@ internal static class VoucherInspectionBuilder
                 .ToArray())
         {
             OriginalSaleCategory = Text(Direct(voucher, "URDORIGINALSALEVALUE")),
+            ReverseCharge = Logical(Direct(voucher, "ISREVERSECHARGEAPPLICABLE")),
+            GstNature = Text(Direct(voucher, "GSTNATUREOFTRANSACTION")),
+            Country = Text(Direct(voucher, "COUNTRYOFRESIDENCE")),
             Reference = Text(Direct(voucher, "REFERENCE")),
             ReferenceDate = OptionalDate(Direct(voucher, "REFERENCEDATE")),
             OriginalInvoices = voucher.Elements("ORIGINVOICEDETAILS.LIST")
@@ -122,7 +133,12 @@ internal static class VoucherInspectionBuilder
                     Text(Direct(rate, "GSTRATEDUTYHEAD")),
                     Text(Direct(rate, "GSTRATEVALUATIONTYPE")),
                     Decimal(Direct(rate, "GSTRATE"))))
-                .ToArray());
+                .ToArray())
+        {
+            ReverseChargeApplicability = Text(Direct(entry, "GSTOVRDNISREVCHARGEAPPL")),
+            GstNature = Text(Direct(entry, "GSTOVRDNNATURE")),
+            StoredGstNature = Text(Direct(entry, "GSTOVRDNSTOREDNATURE"))
+        };
     }
 
     private static VoucherInventoryInspection? Inventory(XElement entry)

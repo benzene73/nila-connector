@@ -4,7 +4,12 @@ The SDK builds accounting-invoice XML and reads back native voucher fields.
 `scripts/gst-fixtures.cs` owns fixture orchestration. Diagnostics is read-only.
 This is a development fixture workflow, not a Nila product integration or a
 return-filing tool. It supports one accounting sales line, zero cess, domestic
-sales and credit/debit notes. It does not decide a transaction's GST treatment.
+sales/notes, outward RCM, SEZ and exports with/without IGST. Special treatments
+currently require sales invoices; special credit/debit notes are rejected.
+It does not decide a transaction's GST treatment.
+
+For SDK master creation and the verified RCM/SEZ/export batch, see
+[gst-special-fixtures.md](gst-special-fixtures.md).
 
 ## Prerequisites and scope
 
@@ -144,9 +149,10 @@ Printed behavior still requires verification for each Tally print layout.
 - Debit/credit flags precede `AMOUNT`. Reversing that order produced a native
   balance exception despite mathematically balanced XML in the live experiment.
 - Retain tax/HSN inference settings and all five rate heads, including zero
-  cess. Tally's `&#4; Not Applicable` system value is significant: plain text
-  `Not Applicable` did not have the same behavior. Validation strips only this
-  known character reference from its parsing copy; transport sends it intact.
+  cess. Tally's `&#4;` system values are significant: plain text does not have
+  the same behavior. Validation strips only the four known values (`Not
+  Applicable`, `Applicable`, `System Inferred`, `Unknown`) from its parsing
+  copy; transport sends them intact.
 - Native object inspection fetches full voucher fields by MasterID, then
   enforces returned ID and date. Collection-based inspection had omitted the
   original-sale and reference fields. Fingerprint reads retain their existing

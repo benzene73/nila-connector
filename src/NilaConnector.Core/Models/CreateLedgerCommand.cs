@@ -8,4 +8,5 @@ public sealed record CreateLedgerCommand(
     string RegistrationType,
     string State,
     string Country,
-    DateOnly ApplicableFrom);
+    DateOnly ApplicableFrom,
+    GstSalesLedgerSettings? SalesGst = null);

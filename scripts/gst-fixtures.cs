@@ -35,7 +35,7 @@ try
         throw new InvalidDataException("Fixture seller GSTIN differs from the loaded company.");
     var masters = await diagnostics.GetMastersAsync(company, default);
     var required = cases.SelectMany(c => new[] { c.PartyLedger, c.SalesLedger }
-        .Concat(c.Rate == 0 ? [] : c.PlaceOfSupply == c.SellerState ? [c.CgstLedger, c.SgstLedger] : [c.IgstLedger])).Distinct();
+        .Concat(c.Rate == 0 || !c.CollectsTax ? [] : c.Treatment == GstSalesTreatment.Domestic && c.PlaceOfSupply == c.SellerState ? [c.CgstLedger, c.SgstLedger] : [c.IgstLedger])).Distinct();
     foreach (var name in required)
         if (!masters.Masters.Any(m => m.Kind == "ledger" && m.Name == name))
             throw new InvalidDataException($"Missing prerequisite ledger: {name}. See the runbook; no masters are altered automatically.");
@@ -79,7 +79,7 @@ try
         var found = await diagnostics.GetVoucherInspectionAsync(company, item.Date, id, default);
         if (found is not VoucherInspectionLookupResult.Found hit) throw new InvalidDataException($"Readback missing: {item.Number}");
         var actual = hit.Inspection;
-        var expected = XDocument.Parse(item.ToImportCommand(company.Name).Xml.Replace("&#4; Not Applicable", "Not Applicable", StringComparison.Ordinal)).Descendants("VOUCHER").Single();
+        var expected = XDocument.Parse(item.ToImportCommand(company.Name).Xml.Replace("&#4; Not Applicable", "Not Applicable", StringComparison.Ordinal).Replace("&#4; Applicable", "Applicable", StringComparison.Ordinal).Replace("&#4; System Inferred", "System Inferred", StringComparison.Ordinal).Replace("&#4; Unknown", "Unknown", StringComparison.Ordinal)).Descendants("VOUCHER").Single();
         var amounts = expected.Elements("LEDGERENTRIES.LIST").ToDictionary(e => e.Element("LEDGERNAME")!.Value,
             e => decimal.Parse(e.Element("AMOUNT")!.Value, System.Globalization.CultureInfo.InvariantCulture));
         var sale = actual.LedgerEntries.SingleOrDefault(e => e.LedgerName == item.SalesLedger);
@@ -87,6 +87,9 @@ try
             ["IGST"] = item.Rate, ["Cess"] = 0, ["State Cess"] = 0 };
         var category = item.OriginalCategory is null ? null : item.OriginalCategory == OriginalSaleCategory.Large ? "B2C (Large)" : "B2C (Small)";
         if (actual.VoucherNumber != item.Number || actual.VoucherType != item.VoucherType || actual.PlaceOfSupply != item.PlaceOfSupply
+            || actual.ReverseCharge != (item.Treatment == GstSalesTreatment.ReverseCharge)
+            || (item.IsSez && actual.RegistrationType != "Regular - SEZ")
+            || (item.IsExport && actual.Country != item.Country)
             || actual.PartyGstin != item.PartyGstin || actual.PartyLedgerName != item.PartyLedger
             || actual.LedgerEntries.Count != amounts.Count || actual.LedgerEntries.Any(e => !amounts.TryGetValue(e.LedgerName, out var value) || e.Amount != value)
             || sale?.GstTaxability != item.TaxabilityText || sale.HsnSac != item.HsnSac
