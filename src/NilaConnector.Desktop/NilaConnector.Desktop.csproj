@@ -30,7 +30,10 @@
     <Resource Include="Assets\nila.ico" />
   </ItemGroup>
 
-  <Target Name="RecordConnectorBuild" BeforeTargets="GetAssemblyAttributes">
+  <!-- WPF also evaluates this file as a generated *_wpftmp project. Record the
+       checkout only for the real project, outside that temporary compilation. -->
+  <Target Name="RecordConnectorBuild" BeforeTargets="GetAssemblyAttributes"
+          Condition="'$(MSBuildProjectName)' == 'NilaConnector.Desktop'">
     <Exec Command="git status --porcelain --untracked-files=normal"
           WorkingDirectory="$(MSBuildProjectDirectory)"
           ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="Low"
