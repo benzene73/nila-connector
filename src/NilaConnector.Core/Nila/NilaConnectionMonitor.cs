@@ -13,6 +13,7 @@ public sealed partial class NilaConnectionMonitor(
     NilaConnectionOptions options,
     IDeviceCredentialStore credentialStore,
     JobRunner jobRunner,
+    SyncCoordinator syncCoordinator,
     ConnectorStateStore stateStore,
     ILogger<NilaConnectionMonitor> logger) : BackgroundService
 {
@@ -174,10 +175,12 @@ public sealed partial class NilaConnectionMonitor(
     {
         Task<PhoenixMessage>? receiveTask = null;
         Task<ConnectorJobResult>? jobTask = null;
+        Task? syncTask = null;
         Task? resultAcknowledgementTimeout = null;
         string? resultReference = null;
         string? resultStatus = null;
         var resultJobId = 0;
+        var queuedSyncs = new Queue<(TallyCompany Company, SyncRunResponse Run)>();
 
         try
         {
@@ -188,6 +191,11 @@ public sealed partial class NilaConnectionMonitor(
                 if (jobTask is not null)
                 {
                     pending.Add(jobTask);
+                }
+
+                if (syncTask is not null)
+                {
+                    pending.Add(syncTask);
                 }
 
                 if (resultAcknowledgementTimeout is not null)
@@ -214,6 +222,42 @@ public sealed partial class NilaConnectionMonitor(
                         cancellationToken);
                     resultAcknowledgementTimeout = Task.Delay(options.ConnectTimeout, cancellationToken);
                     jobTask = null;
+                    continue;
+                }
+
+                if (completed == syncTask)
+                {
+                    try
+                    {
+                        await syncTask;
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception)
+                    {
+                        LogSyncRequestFailed(logger, exception.GetType().Name);
+                    }
+
+                    syncTask = null;
+                    while (queuedSyncs.TryDequeue(out var queued))
+                    {
+                        var stillOpen = stateStore.Current.Companies.FirstOrDefault(candidate =>
+                            SyncCoordinator.MatchesCompany(candidate, SyncCoordinator.CompanyIdentity(queued.Company)));
+                        if (stillOpen is null)
+                        {
+                            await syncCoordinator.FailRequestedAsync(
+                                queued.Run.Id,
+                                "The requested company is no longer open in Tally.",
+                                cancellationToken);
+                            continue;
+                        }
+
+                        syncTask = syncCoordinator.SyncRequestedAsync(stillOpen, queued.Run, cancellationToken);
+                        break;
+                    }
+
                     continue;
                 }
 
@@ -255,6 +299,39 @@ public sealed partial class NilaConnectionMonitor(
                     }
 
                     jobTask = jobRunner.ExecuteAsync(message.Payload, cancellationToken);
+                }
+                else if (message.Topic == topic && message.Event == "sync_requested")
+                {
+                    var request = DecodeSyncRequest(message.Payload);
+                    var company = stateStore.Current.Companies.FirstOrDefault(candidate =>
+                        SyncCoordinator.MatchesCompany(candidate, request.CompanyIdentity));
+                    if (company is null)
+                    {
+                        LogSyncRequestIgnored(logger, "requested company is not open in Tally");
+                        await syncCoordinator.FailRequestedAsync(
+                            request.Id,
+                            "The requested company is not open in Tally.",
+                            cancellationToken);
+                        continue;
+                    }
+
+                    var run = new SyncRunResponse(
+                            request.Id,
+                            request.PeriodStart,
+                            request.PeriodEnd,
+                            "syncing",
+                            "pending",
+                            "pending",
+                            null,
+                            null);
+                    if (syncTask is not null)
+                    {
+                        queuedSyncs.Enqueue((company, run));
+                    }
+                    else
+                    {
+                        syncTask = syncCoordinator.SyncRequestedAsync(company, run, cancellationToken);
+                    }
                 }
             }
         }
@@ -371,6 +448,21 @@ public sealed partial class NilaConnectionMonitor(
         (credential.WebSocketEndpoint.Scheme == "wss" ||
          (credential.WebSocketEndpoint.Scheme == "ws" && credential.WebSocketEndpoint.IsLoopback));
 
+    private static SyncRequestedMessage DecodeSyncRequest(System.Text.Json.JsonElement payload)
+    {
+        if (payload.ValueKind != System.Text.Json.JsonValueKind.Object ||
+            !payload.TryGetProperty("id", out var id) || !id.TryGetInt64(out var runId) || runId <= 0 ||
+            !payload.TryGetProperty("company_identity", out var identity) || identity.GetString() is not { Length: > 0 } companyIdentity ||
+            !payload.TryGetProperty("period_start", out var start) || !DateOnly.TryParse(start.GetString(), out var periodStart) ||
+            !payload.TryGetProperty("period_end", out var end) || !DateOnly.TryParse(end.GetString(), out var periodEnd) ||
+            periodEnd < periodStart)
+        {
+            throw new InvalidDataException("Nila sent an invalid Tally sync request.");
+        }
+
+        return new SyncRequestedMessage(runId, companyIdentity, periodStart, periodEnd);
+    }
+
     private static TimeSpan ReconnectDelay(int attempt)
     {
         var seconds = attempt switch
@@ -396,4 +488,16 @@ public sealed partial class NilaConnectionMonitor(
 
     [LoggerMessage(EventId = 3003, Level = LogLevel.Information, Message = "Nila acknowledged Tally job {JobId} as {Status}")]
     private static partial void LogResultAcknowledged(ILogger logger, int jobId, string status);
+
+    [LoggerMessage(EventId = 3004, Level = LogLevel.Warning, Message = "Could not run Nila sync request ({ExceptionType})")]
+    private static partial void LogSyncRequestFailed(ILogger logger, string exceptionType);
+
+    [LoggerMessage(EventId = 3005, Level = LogLevel.Information, Message = "Ignored Nila sync request: {Reason}")]
+    private static partial void LogSyncRequestIgnored(ILogger logger, string reason);
+
+    private sealed record SyncRequestedMessage(
+        long Id,
+        string CompanyIdentity,
+        DateOnly PeriodStart,
+        DateOnly PeriodEnd);
 }
