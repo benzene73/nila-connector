@@ -231,11 +231,3 @@ public partial class App : System.Windows.Application, IDisposable
     [LoggerMessage(EventId = 1001, Level = LogLevel.Critical, Message = "Nila Connector failed to start")]
     private static partial void LogStartupFailed(ILogger logger, Exception exception);
 }
-
-internal static class AppVersion
-{
-    public static string Current { get; } =
-        typeof(App).Assembly.GetName().Version is { } version
-            ? $"{version.Major}.{version.Minor}.{version.Build}"
-            : "0.1.0";
-}

@@ -1,7 +1,6 @@
 param(
-    [Parameter()]
-    [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = "0.1.0",
+    [Parameter(Mandatory)]
+    [string]$Tag,
 
     [Parameter()]
     [string]$Configuration = "Release",
@@ -19,6 +18,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repository = Split-Path -Parent $PSScriptRoot
+$release = & (Join-Path $PSScriptRoot "resolve-release.ps1") -Tag $Tag -Repository $repository
+$Version = $release.Version
 $publishDirectory = Join-Path $repository "artifacts\publish\win-x64"
 $installerDirectory = Join-Path $repository "artifacts\installer"
 $project = Join-Path $repository "src\NilaConnector.Desktop\NilaConnector.Desktop.csproj"
@@ -50,8 +51,14 @@ function Invoke-CodeSigning {
     }
 }
 
-Remove-Item -LiteralPath $publishDirectory -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $installerDirectory -Recurse -Force -ErrorAction SilentlyContinue
+foreach ($outputDirectory in @($publishDirectory, $installerDirectory)) {
+    $resolvedOutput = [IO.Path]::GetFullPath($outputDirectory)
+    $artifactsRoot = [IO.Path]::GetFullPath((Join-Path $repository "artifacts")) + [IO.Path]::DirectorySeparatorChar
+    if (-not $resolvedOutput.StartsWith($artifactsRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Build output must stay inside the repository artifacts directory."
+    }
+    Remove-Item -LiteralPath $resolvedOutput -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 dotnet publish $project `
     --configuration $Configuration `
@@ -60,6 +67,8 @@ dotnet publish $project `
     --output $publishDirectory `
     -p:PublishProfile=win-x64 `
     -p:Version=$Version `
+    -p:ConnectorRelease=true `
+    -p:SourceRevisionId=$($release.Commit) `
     -p:DebugType=None `
     -p:DebugSymbols=false
 

@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #error AppVersion must be supplied by build-installer.ps1 from a release tag
 #endif
 
 #define AppName "Nila Connector"
@@ -15,7 +15,7 @@ AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppUrl}
 AppSupportURL={#AppUrl}
-AppUpdatesURL={#AppUrl}
+AppUpdatesURL=https://github.com/KaguyaHQ/nila-downloads/releases/latest
 DefaultDirName={localappdata}\Programs\Nila Connector
 DefaultGroupName=Nila Connector
 DisableProgramGroupPage=yes

@@ -42,6 +42,12 @@ dotnet test --no-build
 dotnet run --project src/NilaConnector.Desktop
 ```
 
+Normal builds, including `--configuration Release`, show **Development build**
+and a short source commit in the main window. **Modified** means the checkout had
+local changes when it was built. In Settings, hover over the version or choose
+**Copy build info** to get the full commit. These labels are
+embedded at build time; they do not depend on Git being installed on the user's PC.
+
 TallyPrime defaults to `http://127.0.0.1:9000`. Installed builds connect to
 `https://nila.tax`. To run the current source against local Nila:
 
@@ -128,21 +134,24 @@ Install Inno Setup, then create a self-contained x64 setup executable:
 
 ```powershell
 winget install --id JRSoftware.InnoSetup --exact
-./scripts/build-installer.ps1 -Version 0.1.0
+./scripts/build-installer.ps1 -Tag v0.5.2
 ```
 
 The setup executable is written to `artifacts/installer`. It installs per user
 without elevation, supports in-place upgrades and clean uninstall, creates a
 Start Menu shortcut, and offers optional desktop and start-on-login shortcuts.
 
-The release workflow builds the same artifact for version tags. To sign the
+The tag must already exist, point to the checked-out commit, and the checkout
+must be clean. The version comes from that tag; `v0.5.2` is an example, not a
+version to reuse. The app and installer both receive `0.5.2`, and the app also
+embeds the source commit. To sign the
 application and installer with a certificate already installed in the Windows
 certificate store, pass its SHA-1 thumbprint and, if needed, the Windows SDK
 signing-tool path:
 
 ```powershell
 ./scripts/build-installer.ps1 `
-  -Version 0.1.0 `
+  -Tag v0.5.2 `
   -SigningCertificateSha1 0123456789ABCDEF0123456789ABCDEF01234567 `
   -SignToolPath "C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe"
 ```
@@ -151,3 +160,38 @@ Unsigned builds are suitable for development but will trigger Windows trust
 warnings and must not be presented as a trusted public release. Inno Setup is
 freeware; JRSoftware also offers an optional commercial license for companies
 that want to financially support its development.
+
+## Publishing and upgrading
+
+Pushing to `main` runs build and tests. It does not publish an installer.
+For a release, choose the next unused `vMAJOR.MINOR.PATCH` tag: increment PATCH
+for fixes, MINOR for features, or MAJOR for breaking changes. Preserve existing
+tags and releases; never move a released tag or replace its installer.
+
+After the intended changes are committed, pushed to `main`, and CI passes:
+
+```powershell
+git tag -a v0.5.2 -m "Nila Connector 0.5.2"
+git push origin v0.5.2
+```
+
+Use a new version if that example tag already exists. The release workflow checks
+that the tag is on `main`, runs tests again, builds the installer, and publishes
+to [Nila downloads](https://github.com/KaguyaHQ/nila-downloads/releases).
+It rejects an existing public release instead of overwriting its files. Manual
+workflow runs must select an existing version tag and follow the same checks.
+Publication requires the `NILA_DOWNLOADS_TOKEN` repository secret with write
+access to `KaguyaHQ/nila-downloads`. A failed publication requires inspection of
+any draft release before retrying; do not replace a published release.
+
+To upgrade an installed connector:
+
+1. In Settings, choose **Download latest release** and download the setup executable.
+2. Quit the connector using its system-tray **Quit** command.
+3. Run the installer and launch Nila Connector from the Start Menu.
+4. Check the version at the bottom of the main window.
+
+The installer upgrades the existing per-user installation. The saved device link,
+Tally settings, and logs are retained. Updates are installed manually; the app
+does not download or install updates in the background. Running a development
+build from this repo does not update the installed copy or its shortcuts.

@@ -30,4 +30,23 @@
     <Resource Include="Assets\nila.ico" />
   </ItemGroup>
 
+  <Target Name="RecordConnectorBuild" BeforeTargets="GetAssemblyAttributes">
+    <Exec Command="git status --porcelain --untracked-files=normal"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="Low"
+          Condition="Exists('$(MSBuildProjectDirectory)/../../.git')">
+      <Output TaskParameter="ConsoleOutput" ItemName="ConnectorWorkingTreeChanges" />
+      <Output TaskParameter="ExitCode" PropertyName="ConnectorGitStatusExitCode" />
+    </Exec>
+    <PropertyGroup>
+      <ConnectorHasLocalChanges Condition="'@(ConnectorWorkingTreeChanges)' != '' and '$(ConnectorGitStatusExitCode)' == '0'">true</ConnectorHasLocalChanges>
+    </PropertyGroup>
+    <Error Condition="'$(ConnectorRelease)' == 'true' and ('$(ConnectorHasLocalChanges)' == 'true' or '$(ConnectorGitStatusExitCode)' != '0')"
+           Text="Release builds require a clean Git checkout." />
+    <ItemGroup>
+      <AssemblyMetadata Include="ConnectorRelease" Value="$(ConnectorRelease)" />
+      <AssemblyMetadata Include="ConnectorHasLocalChanges" Value="$(ConnectorHasLocalChanges)" />
+    </ItemGroup>
+  </Target>
+
 </Project>

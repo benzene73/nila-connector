@@ -2,18 +2,18 @@ name: release
 run-name: Release — ${{ github.ref_name }}
 
 on:
+  # Manual runs must select an existing version tag, not a branch.
   workflow_dispatch:
-    inputs:
-      version:
-        description: Semantic version without the v prefix
-        required: true
-        default: 0.1.0
   push:
     tags:
       - "v*"
 
 permissions:
   contents: read
+
+concurrency:
+  group: connector-release
+  cancel-in-progress: false
 
 jobs:
   windows-installer:
@@ -22,25 +22,43 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.400
-      - name: Resolve version
+      - name: Verify release tag
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
         run: |
-          $version = if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            "${{ inputs.version }}"
-          } else {
-            "${{ github.ref_name }}".TrimStart("v")
-          }
-          "NILA_CONNECTOR_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          if ($env:RELEASE_REF_TYPE -ne 'tag') { throw 'Select a version tag to release.' }
+          $release = ./scripts/resolve-release.ps1 -Tag $env:RELEASE_TAG
+          git merge-base --is-ancestor $release.Commit origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'The release commit must be on main.' }
+          "NILA_CONNECTOR_VERSION=$($release.Version)" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Check public release is new
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.NILA_DOWNLOADS_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          # A failed API request must not be mistaken for an unused version.
+          $releases = gh api --paginate repos/KaguyaHQ/nila-downloads/releases --jq '.[].tag_name'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify existing public releases.' }
+          if ($releases -contains $env:RELEASE_TAG) { throw 'This version already exists. Use a new tag.' }
       - run: dotnet restore
+      - name: Test release checks
+        shell: pwsh
+        run: ./tests/Release.Tests.ps1
       - run: dotnet test --configuration Release --no-restore
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
       - name: Build installer
         shell: pwsh
-        run: ./scripts/build-installer.ps1 -Version $env:NILA_CONNECTOR_VERSION
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: ./scripts/build-installer.ps1 -Tag $env:RELEASE_TAG
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
@@ -48,18 +66,20 @@ jobs:
           path: artifacts/installer/*.exe
           if-no-files-found: error
       - name: Publish public release
-        if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.NILA_DOWNLOADS_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $asset = "artifacts/installer/NilaConnector-win-x64-setup.exe"
-          $repo = "KaguyaHQ/nila-downloads"
+          $notes = @"
+          Windows installer for Nila Connector $env:RELEASE_TAG.
 
-          gh release view $tag --repo $repo *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $asset --repo $repo --clobber
-          } else {
-            gh release create $tag $asset --repo $repo --title "Nila Connector $tag" --notes "Windows installer for Nila Connector $tag."
-          }
+          Source commit: $env:RELEASE_COMMIT
+
+          To upgrade, quit Nila Connector from its tray menu, run the installer, and open Nila Connector from the Start Menu. Your saved connection settings and device link are preserved.
+          "@
+          $notesPath = Join-Path $env:RUNNER_TEMP 'connector-release-notes.md'
+          Set-Content -LiteralPath $notesPath -Value $notes -Encoding utf8
+          gh release create $env:RELEASE_TAG artifacts/installer/NilaConnector-win-x64-setup.exe --repo KaguyaHQ/nila-downloads --title "Nila Connector $env:RELEASE_TAG" --notes-file $notesPath
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed. Existing releases are never overwritten.' }

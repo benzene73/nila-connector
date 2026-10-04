@@ -23,6 +23,7 @@ public partial class MainWindow : Window
         ILogger<MainWindow> logger)
     {
         InitializeComponent();
+        VersionLabel.Text = AppVersion.Build.DisplayName;
         _viewModel = viewModel;
         _machineLinker = machineLinker;
         _tallySettings = tallySettings;

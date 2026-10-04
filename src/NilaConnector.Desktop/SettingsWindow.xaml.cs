@@ -19,6 +19,8 @@ public partial class SettingsWindow : Window
         Func<Task> unlinkAsync)
     {
         InitializeComponent();
+        BuildDetailsText.Text = AppVersion.Build.DisplayName;
+        BuildDetailsText.ToolTip = AppVersion.Build.Details;
         _tallySettings = tallySettings;
         _logDirectory = logDirectory;
         _unlinkAsync = unlinkAsync;
@@ -94,6 +96,25 @@ public partial class SettingsWindow : Window
                 "Unlink failed",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+        }
+    }
+
+    private void DownloadRelease_Click(object sender, RoutedEventArgs e) =>
+        _ = Process.Start(new ProcessStartInfo("https://github.com/KaguyaHQ/nila-downloads/releases/latest")
+        {
+            UseShellExecute = true,
+        });
+
+    private void CopyBuildInfo_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Windows.Clipboard.SetText(AppVersion.Build.Details);
+            CopyBuildInfoButton.Content = "Copied";
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            CopyBuildInfoButton.Content = "Try copying again";
         }
     }
 

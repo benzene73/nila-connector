@@ -20,5 +20,8 @@ jobs:
         with:
           dotnet-version: 10.0.400
       - run: dotnet restore
+      - name: Test release checks
+        shell: pwsh
+        run: ./tests/Release.Tests.ps1
       - run: dotnet build --configuration Release --no-restore
       - run: dotnet test --configuration Release --no-build
