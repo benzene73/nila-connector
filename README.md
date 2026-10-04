@@ -186,7 +186,8 @@ any draft release before retrying; do not replace a published release.
 
 To upgrade an installed connector:
 
-1. In Settings, choose **Download latest release** and download the setup executable.
+1. In Settings, choose **Check for updates**. If a newer release is available,
+   choose **Download update** to download its installer through your browser.
 2. Quit the connector using its system-tray **Quit** command.
 3. Run the installer and launch Nila Connector from the Start Menu.
 4. Check the version at the bottom of the main window.
@@ -195,3 +196,9 @@ The installer upgrades the existing per-user installation. The saved device link
 Tally settings, and logs are retained. Updates are installed manually; the app
 does not download or install updates in the background. Running a development
 build from this repo does not update the installed copy or its shortcuts.
+
+Update checks run only when requested. Settings reports failed checks without
+claiming the app is up to date, and offers only a completed stable Windows
+installer. Development builds hide update checks and downloads; they keep release
+notes and build information available. **Release notes** opens the
+release page; **Copy build info** copies the version and full source commit.

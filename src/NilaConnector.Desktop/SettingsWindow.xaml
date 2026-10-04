@@ -46,7 +46,7 @@
         </Style>
         <Style x:Key="Divider" TargetType="Border">
             <Setter Property="Height" Value="1" />
-            <Setter Property="Margin" Value="0,16" />
+            <Setter Property="Margin" Value="0,12" />
             <Setter Property="Background" Value="#EAECF0" />
         </Style>
     </Window.Resources>
@@ -110,13 +110,32 @@
                             Content="Open folder" Click="OpenLogs_Click" />
                 </Grid>
 
-                <StackPanel Margin="0,22,0,0">
+                <StackPanel Margin="0,16,0,0">
                     <TextBlock FontWeight="SemiBold" Text="About" />
-                    <TextBlock x:Name="BuildDetailsText" Margin="0,5,0,0" Foreground="#667085"
-                               TextWrapping="Wrap" />
-                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                        <Button Style="{StaticResource TextAction}" Content="Download latest release"
-                                Click="DownloadRelease_Click" />
+                    <Grid Margin="0,5,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="BuildDetailsText" Foreground="#667085" VerticalAlignment="Center"
+                                   Margin="0,0,12,0" TextWrapping="Wrap" />
+                        <Button x:Name="CheckUpdatesButton" Grid.Column="1" Style="{StaticResource TextAction}"
+                                Content="Check for updates" Click="CheckUpdates_Click" />
+                    </Grid>
+                    <Grid x:Name="UpdateStatusRow" Margin="0,2,0,0" Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="UpdateStatusText" Foreground="#667085" TextWrapping="Wrap"
+                                   VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite" />
+                        <Button x:Name="DownloadUpdateButton" Grid.Column="1" Margin="12,0,0,0"
+                                Style="{StaticResource TextAction}" Visibility="Collapsed"
+                                Content="Download update" Click="DownloadUpdate_Click" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button Style="{StaticResource TextAction}" Content="Release notes"
+                                Click="ReleaseNotes_Click" />
                         <TextBlock Margin="12,0" VerticalAlignment="Center" Foreground="#D0D5DD" Text="·" />
                         <Button x:Name="CopyBuildInfoButton" Style="{StaticResource TextAction}"
                                 Content="Copy build info" Click="CopyBuildInfo_Click" />

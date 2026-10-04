@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Net.Http;
+using System.Text.Json;
 using System.Windows;
 using NilaConnector.Desktop.Services;
 
@@ -11,19 +13,24 @@ public partial class SettingsWindow : Window
     private readonly Func<Task> _unlinkAsync;
     private readonly TallyConnectionSettingsStore _tallySettings;
     private readonly string _logDirectory;
+    private readonly ReleaseUpdateClient _releaseUpdates;
+    private ConnectorRelease? _latestRelease;
 
     public SettingsWindow(
         bool isLinked,
         TallyConnectionSettingsStore tallySettings,
         string logDirectory,
-        Func<Task> unlinkAsync)
+        Func<Task> unlinkAsync,
+        ReleaseUpdateClient releaseUpdates)
     {
         InitializeComponent();
         BuildDetailsText.Text = AppVersion.Build.DisplayName;
         BuildDetailsText.ToolTip = AppVersion.Build.Details;
+        CheckUpdatesButton.Visibility = AppVersion.Build.IsRelease ? Visibility.Visible : Visibility.Collapsed;
         _tallySettings = tallySettings;
         _logDirectory = logDirectory;
         _unlinkAsync = unlinkAsync;
+        _releaseUpdates = releaseUpdates;
         TallyHostTextBox.Text = tallySettings.Host;
         TallyPortTextBox.Text = tallySettings.Port.ToString(CultureInfo.InvariantCulture);
         DeviceStatusText.Text = isLinked ? "Linked" : "Not linked";
@@ -99,11 +106,63 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void DownloadRelease_Click(object sender, RoutedEventArgs e) =>
-        _ = Process.Start(new ProcessStartInfo("https://github.com/KaguyaHQ/nila-downloads/releases/latest")
+    private async void CheckUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        if (!AppVersion.Build.IsRelease) { return; }
+        using var cancellation = new CancellationTokenSource();
+        void CancelCheck(object? closedSender, EventArgs closedArgs) => cancellation.Cancel();
+        Closed += CancelCheck;
+        CheckUpdatesButton.IsEnabled = false;
+        DownloadUpdateButton.Visibility = Visibility.Collapsed;
+        _latestRelease = null;
+        UpdateStatusRow.Visibility = Visibility.Visible;
+        UpdateStatusText.Text = "Checking for updates…";
+        try
         {
-            UseShellExecute = true,
-        });
+            var release = await _releaseUpdates.GetLatestAsync(cancellation.Token);
+            if (!IsLoaded) { return; }
+            _latestRelease = release;
+            var newer = release.IsNewerThan(AppVersion.Build.Version);
+            UpdateStatusText.Text = newer ? $"Version {release.Version} available" : "You're up to date.";
+            DownloadUpdateButton.Visibility = newer ? Visibility.Visible : Visibility.Collapsed;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException
+            or JsonException or InvalidDataException or KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            if (IsLoaded) { UpdateStatusText.Text = "Couldn't check for updates. Try again."; }
+        }
+        finally
+        {
+            Closed -= CancelCheck;
+            if (IsLoaded) { CheckUpdatesButton.IsEnabled = true; }
+        }
+    }
+
+    private void DownloadUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_latestRelease is not null && OpenLink(_latestRelease.DownloadUri))
+        {
+            UpdateStatusText.Text = "Download opened in your browser. Run the installer to update.";
+        }
+    }
+
+    private void ReleaseNotes_Click(object sender, RoutedEventArgs e) =>
+        _ = OpenLink(_latestRelease?.NotesUri ?? new Uri(ReleaseUpdateClient.ReleaseNotesUrl));
+
+    private bool OpenLink(Uri uri)
+    {
+        try
+        {
+            _ = Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            return true;
+        }
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            UpdateStatusRow.Visibility = Visibility.Visible;
+            UpdateStatusText.Text = "Couldn't open your browser. Try again.";
+            return false;
+        }
+    }
 
     private void CopyBuildInfo_Click(object sender, RoutedEventArgs e)
     {

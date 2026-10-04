@@ -166,6 +166,10 @@ public partial class App : System.Windows.Application, IDisposable
         builder.Services.AddSingleton<SyncCoordinator>();
         builder.Services.AddHostedService<NilaConnectionMonitor>();
         builder.Services.AddSingleton<MainWindowViewModel>();
+        builder.Services.AddSingleton(_ => new ReleaseUpdateClient(new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(15),
+        }));
         builder.Services.AddSingleton<MainWindow>();
 
         return builder.Build();
