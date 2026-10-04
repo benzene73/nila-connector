@@ -7,6 +7,37 @@ namespace NilaConnector.Core.Tests.Tally;
 
 public sealed class VoucherFingerprintTests
 {
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("Not Applicable", false)]
+    [InlineData("System Inferred", true)]
+    [InlineData("Local Sales - Taxable", true)]
+    [InlineData("Interstate Sales - Taxable", true)]
+    public void TaxableEntriesNeedPersistedGstClassification(string? nature, bool expected)
+    {
+        var voucher = XElement.Parse(VoucherXml);
+        var entry = voucher.Elements("LEDGERENTRIES.LIST")
+            .Single(element => element.Element("GSTOVRDNTAXABILITY")?.Value == "Taxable");
+        if (nature is not null) entry.Add(new XElement("GSTOVRDNSTOREDNATURE", nature));
+        Assert.Equal(expected, VoucherSemanticFingerprintBuilder.FromVoucher(voucher).HasStoredGstNature);
+    }
+
+    [Fact]
+    public void ReadsGstReportingStatusWithoutChangingMaterialHash()
+    {
+        var source = XElement.Parse(VoucherXml);
+        var before = VoucherSemanticFingerprintBuilder.FromVoucher(source);
+        source.Add(new XElement("VCHGSTSTATUSISINCLUDED", "Yes"),
+            new XElement("VCHGSTSTATUSISUNCERTAIN", "No"));
+        var after = VoucherSemanticFingerprintBuilder.FromVoucher(source);
+        Assert.True(after.GstIncluded);
+        Assert.False(after.GstUncertain);
+        Assert.Equal(before.CanonicalHash, after.CanonicalHash);
+        Assert.Null(before.GstIncluded);
+        Assert.Null(before.GstUncertain);
+    }
+
     [Fact]
     public void MasterIdRequestUsesTheWorkingSingularTdlFilter()
     {

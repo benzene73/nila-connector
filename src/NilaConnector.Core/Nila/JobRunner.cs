@@ -133,7 +133,7 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
                     $"Tally did not return a trustworthy import response, and Nila could not verify the outcome: {readBackException.Message}");
             }
 
-            if (recovery.State == CandidateState.Equivalent)
+            if (recovery.State is CandidateState.Equivalent or CandidateState.GstUnresolved)
             {
                 return CandidateResult(jobId, recovery, recovered: true);
             }
@@ -164,6 +164,9 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
                 "ReadbackUnavailable",
                 $"Tally accepted the import, but Nila could not read back its authoritative identity: {exception.Message}");
         }
+
+        if (readBack.State == CandidateState.GstUnresolved)
+            return CandidateResult(jobId, readBack);
 
         if (readBack.State != CandidateState.Equivalent)
         {
@@ -288,6 +291,16 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
                 "The candidate voucher disappeared before Nila could verify its contents.");
         }
 
+        if (string.Equals(actual.CanonicalHash, expected.Semantic.CanonicalHash, StringComparison.Ordinal) &&
+            expected.Semantic.RequiresGstValidation &&
+            (actual.GstIncluded != true || actual.GstUncertain != false ||
+             actual.GstOptionalUncertain != false || !actual.HasStoredGstNature))
+        {
+            return new CandidateEvaluation(CandidateState.GstUnresolved, candidate,
+                "The voucher exists in Tally, but its GST reporting checks have not passed. " +
+                "Inspect it in Tally's GST report; do not post it again.");
+        }
+
         return string.Equals(
             actual.CanonicalHash,
             expected.Semantic.CanonicalHash,
@@ -337,6 +350,9 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
         bool recovered = false,
         bool verifiedExisting = false)
     {
+        if (evaluation.State == CandidateState.GstUnresolved)
+            return Indeterminate(jobId, "GstReportingUnresolved", evaluation.Message);
+
         if (evaluation.State == CandidateState.Equivalent && evaluation.Voucher is { } voucher)
         {
             LogRecovered(logger, jobId, voucher.MasterId);
@@ -384,6 +400,7 @@ public sealed partial class JobRunner(ITallyClient tallyClient, ILogger<JobRunne
         Equivalent,
         Conflict,
         Duplicate,
+        GstUnresolved,
     }
 
     private sealed record CandidateEvaluation(

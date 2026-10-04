@@ -169,6 +169,67 @@ public sealed class JobRunnerTests
         Assert.Equal(1, client.ImportCalls);
     }
 
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(null, null)]
+    [InlineData(true, true)]
+    public async Task AcceptedVoucherWithUnresolvedGstIsNotReportedAsSuccess(bool? included, bool? uncertain)
+    {
+        var client = new ScriptedTallyClient(
+            reads: [Candidates(), Candidates(ExistingVoucher())],
+            actualFingerprint: ExpectedFingerprint() with { GstIncluded = included, GstUncertain = uncertain });
+        var runner = new JobRunner(client, NullLogger<JobRunner>.Instance);
+        using var document = ImportJob();
+        var result = await runner.ExecuteAsync(document.RootElement, CancellationToken.None);
+        Assert.Equal("indeterminate", result.Status);
+        Assert.Equal("GstReportingUnresolved", result.Details["kind"]);
+        Assert.Contains("do not post it again", result.Details["message"]?.ToString());
+        Assert.Equal(1, client.ImportCalls);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(null)]
+    public async Task GeneralGstInclusionDoesNotOverrideUnresolvedOptionalChecks(bool? optionalUncertain)
+    {
+        var client = new ScriptedTallyClient(
+            reads: [Candidates(ExistingVoucher())],
+            actualFingerprint: ExpectedFingerprint() with { GstOptionalUncertain = optionalUncertain });
+        var runner = new JobRunner(client, NullLogger<JobRunner>.Instance);
+        using var document = ImportJob();
+        var result = await runner.ExecuteAsync(document.RootElement, CancellationToken.None);
+        Assert.Equal("indeterminate", result.Status);
+        Assert.Equal("GstReportingUnresolved", result.Details["kind"]);
+        Assert.Equal(0, client.ImportCalls);
+    }
+
+    [Fact]
+    public async Task GeneralGstInclusionDoesNotOverrideMissingStoredNature()
+    {
+        var client = new ScriptedTallyClient(
+            reads: [Candidates(ExistingVoucher())],
+            actualFingerprint: ExpectedFingerprint() with { HasStoredGstNature = false });
+        var runner = new JobRunner(client, NullLogger<JobRunner>.Instance);
+        using var document = ImportJob();
+        var result = await runner.ExecuteAsync(document.RootElement, CancellationToken.None);
+        Assert.Equal("indeterminate", result.Status);
+        Assert.Equal("GstReportingUnresolved", result.Details["kind"]);
+        Assert.Equal(0, client.ImportCalls);
+    }
+
+    [Fact]
+    public async Task ExistingVoucherWithGstExceptionNeverGetsImportedAgain()
+    {
+        var client = new ScriptedTallyClient(
+            reads: [Candidates(ExistingVoucher())],
+            actualFingerprint: ExpectedFingerprint() with { GstIncluded = false, GstUncertain = true });
+        var runner = new JobRunner(client, NullLogger<JobRunner>.Instance);
+        using var document = ImportJob();
+        var result = await runner.ExecuteAsync(document.RootElement, CancellationToken.None);
+        Assert.Equal("indeterminate", result.Status);
+        Assert.Equal(0, client.ImportCalls);
+    }
+
     [Fact]
     public async Task DefiniteApplicationRejectionRemainsFailed()
     {
@@ -273,7 +334,7 @@ public sealed class JobRunnerTests
 
     private static VoucherSemanticFingerprint ExpectedFingerprint() =>
         TallyRequestValidator.ReadSingleVoucherFingerprint(
-            new ImportVouchersCommand("Caltech", VoucherXml, 1)).Semantic;
+            new ImportVouchersCommand("Caltech", VoucherXml, 1)).Semantic with { GstIncluded = true, GstUncertain = false, GstOptionalUncertain = false, HasStoredGstNature = true };
 
     private static VoucherSemanticFingerprint ExpectedBankFingerprint() =>
         TallyRequestValidator.ReadSingleVoucherFingerprint(

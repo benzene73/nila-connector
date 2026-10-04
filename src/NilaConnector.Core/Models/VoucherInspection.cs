@@ -21,6 +21,12 @@ public sealed record VoucherInspection(
     IReadOnlyList<VoucherLedgerInspection> LedgerEntries,
     IReadOnlyList<VoucherInventoryInspection> InventoryEntries)
 {
+    public bool? GstIncluded { get; init; }
+    public bool? GstUncertain { get; init; }
+    public bool? GstOverridden { get; init; }
+    public IReadOnlyDictionary<string, string> GstStatus { get; init; } = new Dictionary<string, string>();
+    public string? CompanyGstin { get; init; }
+    public string? GstRegistration { get; init; }
     public string? OriginalSaleCategory { get; init; }
     public bool? ReverseCharge { get; init; }
     public string? GstNature { get; init; }
@@ -47,6 +53,8 @@ public sealed record VoucherLedgerInspection(
     public string? ReverseChargeApplicability { get; init; }
     public string? GstNature { get; init; }
     public string? StoredGstNature { get; init; }
+    public string? GstSourceType { get; init; }
+    public string? GstLedgerSource { get; init; }
 }
 
 public sealed record VoucherGstRateInspection(
@@ -97,6 +105,14 @@ internal static class VoucherInspectionBuilder
                 .Cast<VoucherInventoryInspection>()
                 .ToArray())
         {
+            GstIncluded = Logical(Direct(voucher, "VCHGSTSTATUSISINCLUDED")),
+            GstUncertain = Logical(Direct(voucher, "VCHGSTSTATUSISUNCERTAIN")),
+            GstOverridden = Logical(Direct(voucher, "ISGSTOVERRIDDEN")),
+            GstStatus = voucher.Elements()
+                .Where(element => element.Name.LocalName.StartsWith("VCHGST", StringComparison.Ordinal) && !element.HasElements)
+                .ToDictionary(element => element.Name.LocalName, element => element.Value.Trim()),
+            CompanyGstin = Text(Direct(voucher, "CMPGSTIN")),
+            GstRegistration = Text(Direct(voucher, "GSTREGISTRATION")),
             OriginalSaleCategory = Text(Direct(voucher, "URDORIGINALSALEVALUE")),
             ReverseCharge = Logical(Direct(voucher, "ISREVERSECHARGEAPPLICABLE")),
             GstNature = Text(Direct(voucher, "GSTNATUREOFTRANSACTION")),
@@ -137,7 +153,9 @@ internal static class VoucherInspectionBuilder
         {
             ReverseChargeApplicability = Text(Direct(entry, "GSTOVRDNISREVCHARGEAPPL")),
             GstNature = Text(Direct(entry, "GSTOVRDNNATURE")),
-            StoredGstNature = Text(Direct(entry, "GSTOVRDNSTOREDNATURE"))
+            StoredGstNature = Text(Direct(entry, "GSTOVRDNSTOREDNATURE")),
+            GstSourceType = Text(Direct(entry, "GSTSOURCETYPE")),
+            GstLedgerSource = Text(Direct(entry, "GSTLEDGERSOURCE"))
         };
     }
 

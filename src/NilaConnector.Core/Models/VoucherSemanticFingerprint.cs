@@ -10,7 +10,14 @@ public sealed record VoucherSemanticFingerprint(
     DateOnly Date,
     string VoucherType,
     string? VoucherNumber,
-    string CanonicalHash);
+    string CanonicalHash)
+{
+    public bool RequiresGstValidation { get; init; }
+    public bool? GstIncluded { get; init; }
+    public bool? GstUncertain { get; init; }
+    public bool? GstOptionalUncertain { get; init; }
+    public bool HasStoredGstNature { get; init; }
+}
 
 internal static class VoucherSemanticFingerprintBuilder
 {
@@ -67,8 +74,28 @@ internal static class VoucherSemanticFingerprintBuilder
 
         var canonicalJson = JsonSerializer.Serialize(material);
         var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalJson)));
-        return new VoucherSemanticFingerprint(date, voucherType.Trim(), voucherNumber?.Trim(), hash);
+        return new VoucherSemanticFingerprint(date, voucherType.Trim(), voucherNumber?.Trim(), hash)
+        {
+            RequiresGstValidation = isInvoice == "YES" && voucherType.Trim() is "Sales" or "Credit Note" or "Debit Note",
+            GstIncluded = Logical(DirectValue(voucher, "VCHGSTSTATUSISINCLUDED")),
+            GstUncertain = Logical(DirectValue(voucher, "VCHGSTSTATUSISUNCERTAIN")),
+            GstOptionalUncertain = Logical(DirectValue(voucher, "VCHGSTSTATUSISOPTIONALUNCERTAIN")),
+            // Imported sales can claim general GST inclusion while being absent from GSTR-1.
+            // Their taxable ledger entries must also carry the persisted classification input.
+            HasStoredGstNature = voucher.Elements()
+                .Where(element => IsList(element, "LEDGERENTRIES.LIST") &&
+                    Text(DirectValue(element, "GSTOVRDNTAXABILITY")) == "TAXABLE")
+                .All(element => Text(DirectValue(element, "GSTOVRDNSTOREDNATURE")) is { Length: > 0 } nature &&
+                    nature != "NOT APPLICABLE"),
+        };
     }
+
+    private static bool? Logical(string? value) => Boolean(value) switch
+    {
+        "YES" => true,
+        "NO" => false,
+        _ => null,
+    };
 
     private static string LedgerEntry(XElement entry, string? isInvoice)
     {
